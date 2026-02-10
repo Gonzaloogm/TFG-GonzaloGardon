@@ -1,5 +1,8 @@
 package com.gonzalo.tfg.service;
 
+import java.nio.file.Path;
+import java.util.List;
+
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.DocumentParser;
 import dev.langchain4j.data.document.DocumentSplitter;
@@ -11,14 +14,9 @@ import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
-import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-
-import java.io.InputStream;
-import java.nio.file.Path;
-import java.util.List;
 
 /**
  * Servicio de Ingestión de Documentos.
@@ -74,10 +72,10 @@ public class DocumentIngestionService {
             // 3. Generar embeddings y almacenar
             almacenarSegmentos(segments);
 
-            Log.infof("✅ Documento ingerido exitosamente: %s", documentPath);
+            Log.infof("Documento ingerido exitosamente: %s", documentPath);
 
         } catch (Exception e) {
-            Log.errorf(e, "❌ Error ingiriendo documento: %s", documentPath);
+            Log.errorf(e, "Error ingiriendo documento: %s", documentPath);
             throw new RuntimeException("Error en ingestión de documento", e);
         }
     }
@@ -108,10 +106,10 @@ public class DocumentIngestionService {
             // Almacenar
             almacenarSegmentos(segments);
 
-            Log.infof("✅ Texto ingerido exitosamente: %s", nombreDocumento);
+            Log.infof("Texto ingerido exitosamente: %s", nombreDocumento);
 
         } catch (Exception e) {
-            Log.errorf(e, "❌ Error ingiriendo texto: %s", nombreDocumento);
+            Log.errorf(e, "Error ingiriendo texto: %s", nombreDocumento);
             throw new RuntimeException("Error en ingestión de texto", e);
         }
     }
