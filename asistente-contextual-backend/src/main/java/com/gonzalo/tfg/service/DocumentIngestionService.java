@@ -29,7 +29,8 @@ import jakarta.inject.Inject;
  * 4. Almacenamiento en pgvector
  * 
  * Pipeline según arquitectura:
- * Documento → Extracción → Chunking (300 tokens, overlap 30) → Embeddings → pgvector
+ * Documento → Extracción → Chunking (300 tokens, overlap 30) → Embeddings →
+ * pgvector
  */
 @ApplicationScoped
 public class DocumentIngestionService {
@@ -41,14 +42,14 @@ public class DocumentIngestionService {
     EmbeddingModel embeddingModel;
 
     // Configuración del chunking según arquitectura
-    private static final int CHUNK_SIZE = 300;      // tokens
-    private static final int CHUNK_OVERLAP = 30;    // tokens
+    private static final int CHUNK_SIZE = 300; // tokens
+    private static final int CHUNK_OVERLAP = 30; // tokens
 
     /**
-     * Ingiere un documento desde un Path del sistema de archivos.
+     * Ingiere un documento desde un Path del sistema de archivos
      * 
      * @param documentPath Ruta del documento
-     * @param metadata Metadatos adicionales (autor, departamento, etc.)
+     * @param metadata     Metadatos adicionales (autor, departamento, etc)
      */
     public void ingerirDocumento(Path documentPath, String metadata) {
         Log.infof("Iniciando ingestión de documento: %s", documentPath);
@@ -56,15 +57,13 @@ public class DocumentIngestionService {
         try {
             // 1. Cargar documento
             Document document = FileSystemDocumentLoader.loadDocument(
-                documentPath,
-                crearParser(documentPath.toString())
-            );
+                    documentPath,
+                    crearParser(documentPath.toString()));
 
             // 2. Segmentar en chunks con overlap
             DocumentSplitter splitter = DocumentSplitters.recursive(
-                CHUNK_SIZE,
-                CHUNK_OVERLAP
-            );
+                    CHUNK_SIZE,
+                    CHUNK_OVERLAP);
             List<TextSegment> segments = splitter.split(document);
 
             Log.infof("Documento segmentado en %d fragmentos", segments.size());
@@ -81,10 +80,10 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Ingiere contenido de texto directamente.
-     * Útil para ingestión programática sin archivos.
+     * Ingiere contenido de texto directamente
+     * Útil para ingestión programática sin archivos
      * 
-     * @param contenido Texto a ingerir
+     * @param contenido       Texto a ingerir
      * @param nombreDocumento Nombre descriptivo
      */
     public void ingerirTexto(String contenido, String nombreDocumento) {
@@ -96,9 +95,8 @@ public class DocumentIngestionService {
 
             // Segmentar
             DocumentSplitter splitter = DocumentSplitters.recursive(
-                CHUNK_SIZE,
-                CHUNK_OVERLAP
-            );
+                    CHUNK_SIZE,
+                    CHUNK_OVERLAP);
             List<TextSegment> segments = splitter.split(document);
 
             Log.infof("Texto segmentado en %d fragmentos", segments.size());
@@ -115,7 +113,7 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Almacena segmentos en pgvector con sus embeddings.
+     * Almacena segmentos en pgvector con sus embeddings
      * 
      * @param segments Lista de segmentos de texto
      */
@@ -128,7 +126,7 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Crea el parser apropiado según el tipo de archivo.
+     * Crea el parser apropiado según el tipo de archivo
      * 
      * Comparativa (según arquitectura):
      * - TXT: TextDocumentParser (más rápido)
@@ -153,8 +151,8 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Obtiene estadísticas del almacén vectorial.
-     * Útil para monitoreo y debugging.
+     * Obtiene estadísticas del almacén vectorial
+     * Útil para monitoreo y debugging
      */
     public String obtenerEstadisticas() {
         // TODO: Implementar consulta a pgvector para contar embeddings
