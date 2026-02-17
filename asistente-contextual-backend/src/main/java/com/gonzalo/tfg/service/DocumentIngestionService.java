@@ -132,7 +132,7 @@ public class DocumentIngestionService {
      * - TXT: TextDocumentParser (más rápido)
      * - PDF/DOCX: ApacheTikaDocumentParser (preserva estructura)
      * 
-     * TODO Fase 2: Evaluar Docling para documentos con tablas complejas
+     * Fase 2: Evaluar Docling para documentos con tablas complejas
      * 
      * @param filename Nombre del archivo
      * @return Parser apropiado
@@ -155,7 +155,7 @@ public class DocumentIngestionService {
      * Útil para monitoreo y debugging
      */
     public String obtenerEstadisticas() {
-        // TODO: Implementar consulta a pgvector para contar embeddings
+        // Implementar consulta a pgvector para contar embeddings
         return "Estadísticas no disponibles aún";
     }
 }
