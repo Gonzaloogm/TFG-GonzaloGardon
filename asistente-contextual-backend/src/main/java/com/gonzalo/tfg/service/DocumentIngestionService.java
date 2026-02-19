@@ -19,18 +19,15 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 /**
- * Servicio de Ingestión de Documentos.
- * 
- * Implementa el "Módulo de Ingestión" del diagrama de arquitectura.
- * Responsable de:
- * 1. Extracción de texto de documentos (PDF, DOCX, TXT)
- * 2. Segmentación (chunking) con overlapping
- * 3. Generación de embeddings
- * 4. Almacenamiento en pgvector
- * 
- * Pipeline según arquitectura:
- * Documento → Extracción → Chunking (300 tokens, overlap 30) → Embeddings →
- * pgvector
+ Servicio de Ingestión de Documentos: Implementa el "Módulo de Ingestión" del diagrama de arquitectura
+ Responsable de:
+ 1. Extracción de texto de documentos (PDF, DOCX, TXT)
+ 2. Segmentación (chunking) con overlapping
+ 3. Generación de embeddings
+ 4. Almacenamiento en pgvector
+
+ Pipeline según arquitectura:
+ Documento → Extracción → Chunking (300 tokens, overlap 30) → Embeddings → pgvector
  */
 @ApplicationScoped
 public class DocumentIngestionService {
@@ -46,10 +43,10 @@ public class DocumentIngestionService {
     private static final int CHUNK_OVERLAP = 30; // tokens
 
     /**
-     * Ingiere un documento desde un Path del sistema de archivos
-     * 
-     * @param documentPath Ruta del documento
-     * @param metadata     Metadatos adicionales (autor, departamento, etc)
+     Ingiere un documento desde un Path del sistema de archivos
+
+     @param documentPath Ruta del documento
+     @param metadata     Metadatos adicionales (autor, departamento, etc)
      */
     public void ingerirDocumento(Path documentPath, String metadata) {
         Log.infof("Iniciando ingestión de documento: %s", documentPath);
@@ -80,11 +77,11 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Ingiere contenido de texto directamente
-     * Útil para ingestión programática sin archivos
-     * 
-     * @param contenido       Texto a ingerir
-     * @param nombreDocumento Nombre descriptivo
+     Ingiere contenido de texto directamente
+     Útil para ingestión programática sin archivos
+
+     @param contenido       Texto a ingerir
+     @param nombreDocumento Nombre descriptivo
      */
     public void ingerirTexto(String contenido, String nombreDocumento) {
         Log.infof("Iniciando ingestión de texto: %s", nombreDocumento);
@@ -113,9 +110,9 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Almacena segmentos en pgvector con sus embeddings
-     * 
-     * @param segments Lista de segmentos de texto
+     Almacena segmentos en pgvector con sus embeddings
+
+     @param segments Lista de segmentos de texto
      */
     private void almacenarSegmentos(List<TextSegment> segments) {
         // Generar embeddings para cada segmento
@@ -126,16 +123,16 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Crea el parser apropiado según el tipo de archivo
-     * 
-     * Comparativa (según arquitectura):
-     * - TXT: TextDocumentParser (más rápido)
-     * - PDF/DOCX: ApacheTikaDocumentParser (preserva estructura)
-     * 
-     * Fase 2: Evaluar Docling para documentos con tablas complejas
-     * 
-     * @param filename Nombre del archivo
-     * @return Parser apropiado
+     Crea el parser apropiado según el tipo de archivo
+
+     Comparativa (según arquitectura):
+     - TXT: TextDocumentParser (más rápido)
+     - PDF/DOCX: ApacheTikaDocumentParser (preserva estructura)
+
+     Fase 2: Evaluar Docling para documentos con tablas complejas
+
+     @param filename Nombre del archivo
+     @return Parser apropiado
      */
     private DocumentParser crearParser(String filename) {
         String extension = filename.substring(filename.lastIndexOf(".") + 1).toLowerCase();
@@ -151,8 +148,8 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Obtiene estadísticas del almacén vectorial
-     * Útil para monitoreo y debugging
+     Obtiene estadísticas del almacén vectorial
+     Útil para monitoreo y debugging
      */
     public String obtenerEstadisticas() {
         // Implementar consulta a pgvector para contar embeddings
