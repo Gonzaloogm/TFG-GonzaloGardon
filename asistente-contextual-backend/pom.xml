@@ -41,7 +41,6 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- Quarkus Core -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-websockets-next</artifactId>
@@ -59,31 +58,26 @@
             <artifactId>quarkus-rest</artifactId>
         </dependency>
 
-        <!-- LangChain4j con AI Gemini (nombre correcto del artefacto) -->
         <dependency>
             <groupId>io.quarkiverse.langchain4j</groupId>
             <artifactId>quarkus-langchain4j-ai-gemini</artifactId>
         </dependency>
 
-        <!-- LangChain4j con PGVector para RAG -->
         <dependency>
             <groupId>io.quarkiverse.langchain4j</groupId>
             <artifactId>quarkus-langchain4j-pgvector</artifactId>
         </dependency>
 
-        <!-- PostgreSQL JDBC -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jdbc-postgresql</artifactId>
         </dependency>
 
-        <!-- Hibernate ORM for database schema management -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-orm</artifactId>
         </dependency>
 
-        <!-- Testing -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit5</artifactId>
