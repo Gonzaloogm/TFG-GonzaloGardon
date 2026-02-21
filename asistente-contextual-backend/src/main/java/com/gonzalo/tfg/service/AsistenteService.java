@@ -23,7 +23,8 @@ import jakarta.enterprise.context.SessionScoped;
  4. Inferencia con el LLM (Gemini)
  */
 @RegisterAiService
-public interface AsistenteService {
+public interface AsistenteService
+{
     
     /**
      Método principal de chat que procesa las consultas del usuario.

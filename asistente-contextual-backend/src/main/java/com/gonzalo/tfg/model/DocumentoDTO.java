@@ -1,48 +1,81 @@
 package com.gonzalo.tfg.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- Representa un documento en el sistema de gestión de conocimiento
-
- Este modelo se usa en el Módulo de Ingestión (según arquitectura)
- antes de ser procesado, fragmentado y vectorizado
+ * DTO (Data Transfer Object) para documentos procesados.
+ * Representa un documento que ha sido ingerido en el sistema RAG.
+ * Contiene tanto los metadatos del documento como información sobre
+ * su procesamiento (fecha de carga, tamaño, etc.).
+ * Este DTO se usa para:
+ * - Respuestas del API REST (/api/documentos)
+ * - Almacenamiento temporal en memoria (será entidad JPA en Fase 3)
+ * - Tracking de documentos procesados
  */
 public record DocumentoDTO(
+        @JsonProperty("id")
         String id,
-        String nombre,
-        String tipo, // PDF, DOCX, TXT, etc.
-        String contenido, // Texto extraído
-        Map<String, String> metadatos, // Autor, departamento, fecha, etc
-        LocalDateTime fechaCarga,
-        Long tamanioBytes) {
 
+        @JsonProperty("nombre")
+        String nombre,
+
+        @JsonProperty("tipo")
+        String tipo,
+
+        @JsonProperty("contenido")
+        String contenido,
+
+        @JsonProperty("metadatos")
+        Map<String, String> metadatos,
+
+        @JsonProperty("fecha_carga")
+        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+        LocalDateTime fechaCarga,
+
+        @JsonProperty("tamanio_bytes")
+        Long tamanioBytes
+)
+{
     /**
-     Constructor de conveniencia para documentos simples
+     * Constructor simplificado para crear un documento
+     * con metadatos mínimos.
      */
-    public DocumentoDTO(String nombre, String tipo, String contenido) {
+    public DocumentoDTO(String nombre, String tipo, String contenido)
+    {
         this(
-                java.util.UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
                 nombre,
                 tipo,
                 contenido,
                 Map.of(),
                 LocalDateTime.now(),
-                (long) contenido.length());
+                (long) contenido.length()
+        );
     }
 
     /**
-     Verifica si el documento tiene metadatos específicos
+     * Constructor para documentos con metadatos personalizados.
      */
-    public boolean tieneMetadato(String clave) {
-        return metadatos != null && metadatos.containsKey(clave);
-    }
-
-    /**
-     Obtiene un metadato específico
-     */
-    public String obtenerMetadato(String clave) {
-        return metadatos != null ? metadatos.get(clave) : null;
+    public DocumentoDTO(
+            String nombre,
+            String tipo,
+            String contenido,
+            Map<String, String> metadatos
+    )
+    {
+        this(
+                UUID.randomUUID().toString(),
+                nombre,
+                tipo,
+                contenido,
+                metadatos,
+                LocalDateTime.now(),
+                (long) contenido.length()
+        );
     }
 }

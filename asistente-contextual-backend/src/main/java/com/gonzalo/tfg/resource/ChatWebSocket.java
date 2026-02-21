@@ -5,7 +5,8 @@ import io.quarkus.websockets.next.WebSocket;
 import com.gonzalo.tfg.service.AsistenteService;
 
 @WebSocket(path = "/chat")
-public class ChatWebSocket {
+public class ChatWebSocket
+{
 
     private final AsistenteService asistenteService;
 

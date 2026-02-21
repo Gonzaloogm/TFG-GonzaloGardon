@@ -9,12 +9,14 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 
 @ApplicationScoped
-public class RagConfig {
+public class RagConfig
+{
 
     @Produces
     @ApplicationScoped
     public ContentRetriever contentRetriever(EmbeddingStore<TextSegment> embeddingStore,
-            EmbeddingModel embeddingModel) {
+            EmbeddingModel embeddingModel)
+    {
         return EmbeddingStoreContentRetriever.builder()
                 .embeddingStore(embeddingStore)
                 .embeddingModel(embeddingModel)
