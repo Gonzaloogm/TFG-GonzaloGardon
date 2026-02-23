@@ -93,7 +93,12 @@
             <artifactId>langchain4j-document-parser-apache-tika</artifactId>
         </dependency>
 
-        <!-- OpenTelemetry API for LangChain4j telemetry support -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-embeddings-bge-small-en-q</artifactId>
+            <version>0.36.2</version>
+        </dependency>
+
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-opentelemetry</artifactId>
