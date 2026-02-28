@@ -28,7 +28,7 @@ public class RagConfig
      * Configuración del ContentRetriever con parámetros optimizados.
      * Mejoras vs versión anterior:
      * - maxResults: 3 → 5 (más contexto para respuestas complejas)
-     * - minScore: 0.7 (mantener, buen balance precision/recall)
+     * - minScore: 0.4 (mantener, buen balance precision/recall)
      * - Preparado para filtrado por metadatos
      */
     @Produces
@@ -38,15 +38,15 @@ public class RagConfig
                                               EmbeddingModel embeddingModel
                                             )
     {
-        Log.info("🔧 Configurando ContentRetriever optimizado");
+        Log.info("   Configurando ContentRetriever optimizado");
         Log.info("   - maxResults: 5");
-        Log.info("   - minScore: 0.7");
+        Log.info("   - minScore: 0.4");
 
         return EmbeddingStoreContentRetriever.builder()
                                              .embeddingStore(embeddingStore)
                                              .embeddingModel(embeddingModel)
                                              .maxResults(5)
-                                             .minScore(0.7)
+                                             .minScore(0.4)
                                              .build();
     }
 
@@ -74,7 +74,7 @@ public class RagConfig
                                              .embeddingStore(embeddingStore)
                                              .embeddingModel(embeddingModel)
                                              .maxResults(5)
-                                             .minScore(0.7)
+                                             .minScore(0.4)
                                              .filter(MetadataFilterBuilder.metadataKey(filterKey).isEqualTo(filterValue))
                                              .build();
     }

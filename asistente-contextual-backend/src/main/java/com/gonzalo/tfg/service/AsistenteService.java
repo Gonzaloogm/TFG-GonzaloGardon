@@ -1,5 +1,6 @@
 package com.gonzalo.tfg.service;
 
+import com.gonzalo.tfg.tools.DocumentSystemTool;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import io.quarkiverse.langchain4j.RegisterAiService;
@@ -18,7 +19,7 @@ import io.quarkiverse.langchain4j.RegisterAiService;
  * 4. Este prompt guía al modelo para usar bien ese contexto
  */
 
-@RegisterAiService
+@RegisterAiService(tools = DocumentSystemTool.class)
 public interface AsistenteService
 {
 
