@@ -3,30 +3,27 @@ package com.gonzalo.tfg.service;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import io.quarkiverse.langchain4j.RegisterAiService;
-import jakarta.enterprise.context.SessionScoped;
 
 /**
  * Servicio de IA optimizado para RAG (Retrieval-Augmented Generation).
- * 
  * MEJORAS EN EL PROMPT:
  * 1. Instrucciones claras sobre uso del contexto
  * 2. Formato estructurado para citar fuentes
  * 3. Manejo explícito de casos sin contexto suficiente
  * 4. Directrices para sintetizar múltiples fragmentos
- * 
  * El sistema RAG funciona así:
  * 1. Usuario hace pregunta
  * 2. ContentRetriever busca fragmentos relevantes (top-5, score >0.7)
  * 3. LangChain4j inyecta fragmentos en el contexto automáticamente
  * 4. Este prompt guía al modelo para usar bien ese contexto
  */
-@SessionScoped
+
 @RegisterAiService
-public interface AsistenteService {
+public interface AsistenteService
+{
 
     /**
      * Método principal de chat con RAG optimizado.
-     * 
      * El @SystemMessage define el comportamiento del asistente.
      * Es CRÍTICO para la calidad de las respuestas RAG.
      */

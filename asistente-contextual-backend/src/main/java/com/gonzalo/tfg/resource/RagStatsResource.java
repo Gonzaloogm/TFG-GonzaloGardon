@@ -14,7 +14,6 @@ import java.util.Map;
 
 /**
  * Endpoint para estadísticas y monitoreo del sistema RAG.
- * 
  * Útil para:
  * - Debugging y troubleshooting
  * - Validar que el chunking funciona correctamente
@@ -23,16 +22,15 @@ import java.util.Map;
  */
 @Path("/api/rag")
 @Produces(MediaType.APPLICATION_JSON)
-public class RagStatsResource {
+public class RagStatsResource
+{
 
     @Inject
     DocumentIngestionService ingestionService;
 
     /**
      * Obtiene estadísticas detalladas del sistema RAG.
-     * 
      * GET /api/rag/stats
-     * 
      * Respuesta:
      * {
      * "documentos_procesados": 5,
@@ -43,14 +41,15 @@ public class RagStatsResource {
      * "configuracion": {
      * "maxResults": 5,
      * "minScore": 0.7,
-     * "embedding_model": "text-embedding-004"
-     * }
+     * "embedding_model": "text-embedding-004" }
      * }
      */
     @GET
     @Path("/stats")
-    public Response obtenerEstadisticas() {
-        try {
+    public Response obtenerEstadisticas()
+    {
+        try
+        {
             Map<String, Object> stats = ingestionService.obtenerEstadisticas();
 
             // Añadir configuración del RAG
@@ -68,7 +67,8 @@ public class RagStatsResource {
 
             return Response.ok(stats).build();
 
-        } catch (Exception e) {
+        } catch (Exception e)
+        {
             Log.errorf(e, "Error obteniendo estadísticas");
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Error obteniendo estadísticas"))
@@ -78,9 +78,7 @@ public class RagStatsResource {
 
     /**
      * Health check del sistema RAG.
-     * 
      * GET /api/rag/health
-     * 
      * Verifica:
      * - Conexión a pgvector
      * - Disponibilidad del modelo de embeddings
@@ -88,8 +86,10 @@ public class RagStatsResource {
      */
     @GET
     @Path("/health")
-    public Response healthCheck() {
-        try {
+    public Response healthCheck()
+    {
+        try
+        {
             Map<String, Object> health = new HashMap<>();
             health.put("status", "UP");
             health.put("timestamp", System.currentTimeMillis());
@@ -99,13 +99,15 @@ public class RagStatsResource {
             health.put("documents_loaded", numDocs);
             health.put("ready_for_queries", numDocs > 0);
 
-            if (numDocs == 0) {
+            if (numDocs == 0)
+            {
                 health.put("message", "Sistema operativo pero sin documentos cargados");
             }
 
             return Response.ok(health).build();
 
-        } catch (Exception e) {
+        } catch (Exception e)
+        {
             Log.errorf(e, "Error en health check");
             return Response.status(Response.Status.SERVICE_UNAVAILABLE)
                     .entity(Map.of(
