@@ -6,13 +6,11 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 
 @Path("/api/health")
-public class HealthResource
-{
+public class HealthResource {
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    public HealthResponse health()
-    {
+    public HealthResponse health() {
         return new HealthResponse(
                 "OK",
                 "Asistente Contextual Backend",
