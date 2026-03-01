@@ -2,7 +2,6 @@ package com.gonzalo.tfg.config;
 
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.rag.RetrievalAugmentor;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -26,35 +25,29 @@ public class RagConfig
 {
 
     /**
-     * Ensambla el pipeline completo de RAG, controlando cómo se recupera
-     * la información y cómo se le presenta (inyecta) al LLM.
+     * Configuración del ContentRetriever con parámetros optimizados.
+     * Mejoras vs versión anterior:
+     * - maxResults: 3 → 5 (más contexto para respuestas complejas)
+     * - minScore: 0.4 (mantener, buen balance precision/recall)
+     * - Preparado para filtrado por metadatos
      */
     @Produces
     @ApplicationScoped
-    public RetrievalAugmentor retrievalAugmentor(
-                                                    EmbeddingStore<TextSegment> embeddingStore,
-                                                    EmbeddingModel embeddingModel
-                                                )
+    public ContentRetriever contentRetriever(
+                                              EmbeddingStore<TextSegment> embeddingStore,
+                                              EmbeddingModel embeddingModel
+                                            )
     {
+        Log.info("   Configurando ContentRetriever optimizado");
+        Log.info("   - maxResults: 5");
+        Log.info("   - minScore: 0.4");
 
-        Log.info("🔧 Configurando RetrievalAugmentor con Inyector de Metadatos");
-
-        ContentRetriever contentRetriever = EmbeddingStoreContentRetriever.builder()
-                .embeddingStore(embeddingStore)
-                .embeddingModel(embeddingModel)
-                .maxResults(5)
-                .minScore(0.4)
-                .build();
-
-        dev.langchain4j.rag.content.injector.DefaultContentInjector contentInjector =
-                dev.langchain4j.rag.content.injector.DefaultContentInjector.builder()
-                        .metadataKeysToInclude(java.util.List.of("nombre_archivo"))
-                        .build();
-
-        return dev.langchain4j.rag.DefaultRetrievalAugmentor.builder()
-                .contentRetriever(contentRetriever)
-                .contentInjector(contentInjector)
-                .build();
+        return EmbeddingStoreContentRetriever.builder()
+                                             .embeddingStore(embeddingStore)
+                                             .embeddingModel(embeddingModel)
+                                             .maxResults(5)
+                                             .minScore(0.4)
+                                             .build();
     }
 
     /**

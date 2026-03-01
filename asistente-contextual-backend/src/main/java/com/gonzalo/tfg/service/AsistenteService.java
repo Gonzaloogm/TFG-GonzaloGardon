@@ -1,7 +1,6 @@
 package com.gonzalo.tfg.service;
 
 import com.gonzalo.tfg.tools.DocumentSystemTool;
-import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import io.quarkiverse.langchain4j.RegisterAiService;
@@ -43,6 +42,11 @@ public interface AsistenteService
             2. ESTRUCTURA DE RESPUESTA:
                a) Responde la pregunta directamente con la información del contexto
                b) Si usas información de múltiples fragmentos, sintetízala de forma coherente
+               c) Al final, indica SIEMPRE las fuentes:
+
+                  Fuentes consultadas:
+                  - [Nombre del documento] (si está en metadata)
+                  - Fragmento X de Y (si está en chunk_index/total_chunks)
 
             3. CASOS ESPECIALES:
 
@@ -95,10 +99,11 @@ public interface AsistenteService
 
             Fuentes consultadas:
             - Manual_IT_VPN_2024.pdf (fragmentos 2-3 de 15)
+            - Departamento: IT"
 
             Recuerda: La confianza de los usuarios depende de tu precisión y transparencia.
             Siempre indica tus fuentes y admite cuando la información es incompleta.
             """)
     @UserMessage("{{userMessage}}")
-    String chat(@MemoryId String sessionId, String userMessage);
+    String chat(String userMessage);
 }
