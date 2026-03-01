@@ -21,61 +21,63 @@ import jakarta.enterprise.inject.Produces;
  * - Benchmarks de retrieval accuracy (objetivo >70%)
  */
 @ApplicationScoped
-public class RagConfig
-{
+public class RagConfig {
 
-    /**
-     * Configuración del ContentRetriever con parámetros optimizados.
-     * Mejoras vs versión anterior:
-     * - maxResults: 3 → 5 (más contexto para respuestas complejas)
-     * - minScore: 0.4 (mantener, buen balance precision/recall)
-     * - Preparado para filtrado por metadatos
-     */
-    @Produces
-    @ApplicationScoped
-    public ContentRetriever contentRetriever(
-                                              EmbeddingStore<TextSegment> embeddingStore,
-                                              EmbeddingModel embeddingModel
-                                            )
-    {
-        Log.info("   Configurando ContentRetriever optimizado");
-        Log.info("   - maxResults: 5");
-        Log.info("   - minScore: 0.4");
+  @Produces
+  @ApplicationScoped
+  public dev.langchain4j.rag.RetrievalAugmentor retrievalAugmentor(
+      EmbeddingStore<TextSegment> embeddingStore,
+      EmbeddingModel embeddingModel) {
 
-        return EmbeddingStoreContentRetriever.builder()
-                                             .embeddingStore(embeddingStore)
-                                             .embeddingModel(embeddingModel)
-                                             .maxResults(5)
-                                             .minScore(0.4)
-                                             .build();
-    }
+    Log.info("Configurando RetrievalAugmentor con Inyector de Metadatos");
 
-    /**
-     * Crea un ContentRetriever con filtro de metadatos.
-     * Ejemplo de uso:
-     * var retriever = createFilteredRetriever(embeddingStore, embeddingModel,
-     * filter -> filter.eq("departamento", "IT"));
-     * @param embeddingStore Store de embeddings
-     * @param embeddingModel Modelo de embeddings
-     * @param filterKey      Clave de metadato a filtrar
-     * @param filterValue    Valor del metadato
-     * @return ContentRetriever filtrado
-     */
-    public static ContentRetriever createFilteredRetriever(
-                                                            EmbeddingStore<TextSegment> embeddingStore,
-                                                            EmbeddingModel embeddingModel,
-                                                            String filterKey,
-                                                            String filterValue
-                                                          )
-    {
-        Log.infof("Creando retriever filtrado: %s = %s", filterKey, filterValue);
+    // 1. El Retriever (Búsqueda en pgvector sin umbral para debug)
+    ContentRetriever contentRetriever = EmbeddingStoreContentRetriever.builder()
+        .embeddingStore(embeddingStore)
+        .embeddingModel(embeddingModel)
+        .maxResults(5)
+        // .minScore(0.4)
+        .build();
 
-        return EmbeddingStoreContentRetriever.builder()
-                                             .embeddingStore(embeddingStore)
-                                             .embeddingModel(embeddingModel)
-                                             .maxResults(5)
-                                             .minScore(0.4)
-                                             .filter(MetadataFilterBuilder.metadataKey(filterKey).isEqualTo(filterValue))
-                                             .build();
-    }
+    // 2. ¡LA PIEZA CLAVE QUE FALTABA!
+    // Le inyecta el "nombre_archivo" al texto que lee el LLM
+    dev.langchain4j.rag.content.injector.DefaultContentInjector contentInjector = dev.langchain4j.rag.content.injector.DefaultContentInjector
+        .builder()
+        .metadataKeysToInclude(java.util.Arrays.asList("nombre_archivo"))
+        .build();
+
+    // 3. Ensamblamos el RAG
+    return dev.langchain4j.rag.DefaultRetrievalAugmentor.builder()
+        .contentRetriever(contentRetriever)
+        .contentInjector(contentInjector)
+        .build();
+  }
+
+  /**
+   * Crea un ContentRetriever con filtro de metadatos.
+   * Ejemplo de uso:
+   * var retriever = createFilteredRetriever(embeddingStore, embeddingModel,
+   * filter -> filter.eq("departamento", "IT"));
+   * 
+   * @param embeddingStore Store de embeddings
+   * @param embeddingModel Modelo de embeddings
+   * @param filterKey      Clave de metadato a filtrar
+   * @param filterValue    Valor del metadato
+   * @return ContentRetriever filtrado
+   */
+  public static ContentRetriever createFilteredRetriever(
+      EmbeddingStore<TextSegment> embeddingStore,
+      EmbeddingModel embeddingModel,
+      String filterKey,
+      String filterValue) {
+    Log.infof("Creando retriever filtrado: %s = %s", filterKey, filterValue);
+
+    return EmbeddingStoreContentRetriever.builder()
+        .embeddingStore(embeddingStore)
+        .embeddingModel(embeddingModel)
+        .maxResults(5)
+        // .minScore(0.4)
+        .filter(MetadataFilterBuilder.metadataKey(filterKey).isEqualTo(filterValue))
+        .build();
+  }
 }
