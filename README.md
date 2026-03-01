@@ -1,4 +1,4 @@
-#Asistente Contextual para Gestión de Conocimiento Interno (Backend)
+Asistente Contextual para Gestión de Conocimiento Interno (Backend)
 
 ![Quarkus](https://img.shields.io/badge/Quarkus-3.17.0-blue?logo=quarkus)
 ![Java](https://img.shields.io/badge/Java-21-orange?logo=java)
@@ -9,7 +9,7 @@ Este repositorio contiene el código fuente del backend para el Trabajo de Fin d
 
 El proyecto implementa un Asistente Contextual Inteligente capaz de razonar sobre documentos privados mediante la arquitectura **Retrieval-Augmented Generation (RAG)** y ejecutar acciones en el sistema a través del **Model Context Protocol (MCP)**.
 
-##Arquitectura y Stack Tecnológico
+Arquitectura y Stack Tecnológico
 
 El sistema ha sido diseñado bajo un enfoque reactivo y orientado a microservicios utilizando el siguiente stack:
 
@@ -21,14 +21,14 @@ El sistema ha sido diseñado bajo un enfoque reactivo y orientado a microservici
 * **Procesamiento Documental:** Apache Tika / Docling para la extracción de texto estructurado desde PDF, DOCX y TXT.
 * **Comunicación:** WebSockets (Quarkus WebSockets Next) para streaming de respuestas en tiempo real.
 
-##Características Principales
+Características Principales
 
 - **Ingestión de Documentos:** Pipeline automatizado que recibe documentos, extrae su contenido, lo divide en fragmentos semánticos (chunks de 300 tokens con overlap de 30) y los vectoriza.
 - **Búsqueda Semántica:** Recuperación de contexto de alta precisión utilizando pgvector y el índice de búsqueda aproximada HNSW.
 - **Memoria Conversacional:** Aislamiento de sesiones mediante `@MemoryId`, permitiendo al asistente recordar el hilo de la conversación por cada usuario conectado.
 - **Agencia (MCP):** Capacidad de ejecutar herramientas (Tools) del sistema de forma dinámica y segura, pasando de ser un chat pasivo a un agente activo.
 
-##Requisitos Previos
+Requisitos Previos
 
 Para ejecutar este proyecto en tu entorno local, necesitarás:
 
@@ -37,7 +37,7 @@ Para ejecutar este proyecto en tu entorno local, necesitarás:
 3.  **Docker y Docker Compose** (para levantar la base de datos PostgreSQL con pgvector).
 4.  Una API Key válida de **Google Gemini** (Google AI Studio).
 
-##Instalación y Ejecución en Modo Desarrollo
+Instalación y Ejecución en Modo Desarrollo
 
 1. **Clonar el repositorio:**
    ```bash
