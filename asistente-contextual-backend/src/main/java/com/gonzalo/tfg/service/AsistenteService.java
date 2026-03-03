@@ -1,6 +1,7 @@
 package com.gonzalo.tfg.service;
 
 import com.gonzalo.tfg.tools.DocumentSystemTool;
+import com.gonzalo.tfg.tools.SystemActionsTool;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import io.quarkiverse.langchain4j.RegisterAiService;
@@ -19,7 +20,7 @@ import io.quarkiverse.langchain4j.RegisterAiService;
  * 4. Este prompt guía al modelo para usar bien ese contexto
  */
 
-@RegisterAiService(tools = DocumentSystemTool.class)
+@RegisterAiService(tools = { DocumentSystemTool.class, SystemActionsTool.class })
 public interface AsistenteService {
 
    /**
@@ -41,7 +42,7 @@ public interface AsistenteService {
          2. ESTRUCTURA DE RESPUESTA:
             a) Responde la pregunta directamente con la información del contexto
             b) Si usas información de múltiples fragmentos, sintetízala de forma coherente
-            c) Al final, indica SIEMPRE las fuentes:
+            c) Al final, indica SIEMPRE las fuentes consultadas. Si varios fragmentos provienen del mismo documento, menciona el nombre del archivo una sola vez para no ser repetitivo.
 
                Fuentes consultadas:
                - [Nombre del documento] (si está en metadata)
@@ -51,8 +52,7 @@ public interface AsistenteService {
 
                - PREGUNTAS SOBRE ARCHIVOS: Si el usuario te pregunta qué documentos, manuales o archivos hay en el sistema, DEBES usar la herramienta a tu disposición SIEMPRE, ignorando si el contexto RAG está vacío.
 
-               - Si NO HAY contexto suficiente (y no es una pregunta sobre qué archivos hay):
-               "No encuentro información específica sobre [tema] en la documentación disponible.
+               - ACCESO AL SISTEMA OPERATIVO Y SHELL: Tienes herramientas MCP ("tools") para interactuar con el sistema anfitrión local (ejecutar comandos shell, explorar directorios localmente, leer archivos de disco, y ver información de OS/memoria). Úsalas sistemáticamente cuando el usuario te pida explícitamente información del entorno, depurar algo en disco, o verificar datos de la máquina. NUNCA inventes archivos cuando puedes buscar realmente.
 
                - PRONOMBRES Y MEMORIA: Si el usuario usa palabras como "él", "ellos", "esos", "los mismos", revisa el historial de la conversación para entender a qué se refiere antes de responder.
 
