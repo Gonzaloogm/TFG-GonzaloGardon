@@ -712,13 +712,12 @@
         });
 
         async function deleteDocument(fileName) {
-            // Confirmación nativa
             if (!confirm('¿Estás seguro de que deseas eliminar el documento "' + fileName + '"?')) {
                 return;
             }
 
             try {
-                const response = await fetch('/documents/' + encodeURIComponent(fileName), {
+                const response = await fetch('/api/documentos/' + encodeURIComponent(fileName), {
                     method: 'DELETE'
                 });
 
@@ -735,7 +734,8 @@
 
         async function fetchDocuments() {
             try {
-                var response = await fetch("/documents/listar");
+                // ¡CAMBIO AQUÍ! Ruta correcta de tu Quarkus
+                var response = await fetch("/api/documentos");
                 if (!response.ok) {
                     throw new Error("HTTP " + response.status);
                 }
@@ -754,8 +754,10 @@
                     var item = document.createElement("div");
                     item.className = "document-item";
 
-                    var cleanName = typeof doc === "string" ? doc : (doc.fileName || doc.nombre || doc.name || "Documento");
+                    // Como devuelves un DocumentoDTO, buscamos su ID o fileName
+                    var cleanName = typeof doc === "string" ? doc : (doc.nombre || doc.fileName || doc.id || "Documento");
                     var tipoDoc = "DOC";
+
                     if (typeof doc === "object" && (doc.tipo || doc.contentType || doc.mimeType)) {
                         var mime = doc.tipo || doc.contentType || doc.mimeType;
                         tipoDoc = mime.split('/').pop().toUpperCase();

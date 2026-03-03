@@ -50,7 +50,7 @@ public interface AsistenteService {
 
          3. CASOS ESPECIALES Y USO DE HERRAMIENTAS:
 
-               - PREGUNTAS SOBRE ARCHIVOS: Si el usuario te pregunta qué documentos, manuales o archivos hay en el sistema, DEBES usar la herramienta a tu disposición SIEMPRE, ignorando si el contexto RAG está vacío.
+               - PREGUNTAS SOBRE EL CATÁLOGO DE ARCHIVOS: Si el usuario pregunta "qué documentos tienes", "lista los archivos", "qué hay guardado", etc., ESTÁ ESTRICTAMENTE PROHIBIDO usar el contexto proporcionado para responder. DEBES interrumpir tu generación y EJECUTAR OBLIGATORIAMENTE LA HERRAMIENTA `listarDocumentosDisponibles`. La salida de esa herramienta es la única verdad absoluta.
 
                - ACCESO AL SISTEMA OPERATIVO Y SHELL: Tienes herramientas MCP ("tools") para interactuar con el sistema anfitrión local (ejecutar comandos shell, explorar directorios localmente, leer archivos de disco, y ver información de OS/memoria). Úsalas sistemáticamente cuando el usuario te pida explícitamente información del entorno, depurar algo en disco, o verificar datos de la máquina. NUNCA inventes archivos cuando puedes buscar realmente.
 
@@ -70,7 +70,13 @@ public interface AsistenteService {
 
              Recomendación: [tu análisis o sugerencia para aclarar]"
 
-         4. CALIDAD DE RESPUESTA:
+         4. RAZONAMIENTO PASO A PASO (CHAIN OF THOUGHT):
+            Antes de responder, DEBES pensar paso a paso analizando los fragmentos recuperados.
+            Escribe tu razonamiento dentro de etiquetas <thinking>...</thinking>.
+            Tu respuesta final para el usuario debe ir fuera de estas etiquetas.
+            Solo la respuesta final debe incluir el formato y las fuentes.
+
+         5. CALIDAD DE RESPUESTA:
             SÍ: Ser específico, citar fragmentos exactos, indicar fuentes
             SÍ: Admitir limitaciones ("según el documento X, pero no tengo info sobre Y")
             SÍ: Sintetizar múltiples fragmentos de forma coherente
@@ -79,7 +85,7 @@ public interface AsistenteService {
             NO: Dar respuestas genéricas sin mencionar las fuentes
             NO: Ignorar metadata útil (nombres de archivo, autores, departamentos)
 
-         5. FORMATO DE RESPUESTA:
+         6. FORMATO DE RESPUESTA:
             - Usa párrafos cortos y claros
             - Destaca conceptos clave con **negritas** si es relevante
             - Enumera pasos o puntos cuando sea apropiado

@@ -2,6 +2,8 @@ package com.gonzalo.tfg.config;
 
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
+import dev.langchain4j.memory.chat.ChatMemoryProvider;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -23,6 +25,18 @@ import jakarta.enterprise.inject.Produces;
 @ApplicationScoped
 public class RagConfig {
 
+  /**
+   * Proveedor de memoria para mantener el contexto de la conversación.
+   * Limita el historial a 10 mensajes para evitar degradación de contexto.
+   */
+  @Produces
+  public ChatMemoryProvider chatMemoryProvider() {
+    return memoryId -> MessageWindowChatMemory.builder()
+        .id(memoryId)
+        .maxMessages(10)
+        .build();
+  }
+
   @Produces
   @ApplicationScoped
   public dev.langchain4j.rag.RetrievalAugmentor retrievalAugmentor(
@@ -31,12 +45,12 @@ public class RagConfig {
 
     Log.info("Configurando RetrievalAugmentor con Inyector de Metadatos");
 
-    // 1. El Retriever (Búsqueda en pgvector sin umbral para debug)
+    // 1. El Retriever (Búsqueda en pgvector con threshold de similitud alto)
     ContentRetriever contentRetriever = EmbeddingStoreContentRetriever.builder()
         .embeddingStore(embeddingStore)
         .embeddingModel(embeddingModel)
         .maxResults(5)
-        // .minScore(0.4)
+        .minScore(0.70)
         .build();
 
     // 2. ¡LA PIEZA CLAVE QUE FALTABA!
@@ -76,7 +90,7 @@ public class RagConfig {
         .embeddingStore(embeddingStore)
         .embeddingModel(embeddingModel)
         .maxResults(5)
-        // .minScore(0.4)
+        .minScore(0.70)
         .filter(MetadataFilterBuilder.metadataKey(filterKey).isEqualTo(filterValue))
         .build();
   }
