@@ -21,6 +21,7 @@ public class ChatWebSocket {
     @OnTextMessage
     public String onMessage(String message) {
         String sessionId = connection.id();
-        return asistenteService.chat(sessionId, message);
+        String response = asistenteService.chat(sessionId, message);
+        return response.replaceAll("(?s)<thinking>.*?</thinking>\\s*", "");
     }
 }
