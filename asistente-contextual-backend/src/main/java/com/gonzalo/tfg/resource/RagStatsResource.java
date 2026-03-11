@@ -13,12 +13,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Endpoint para estadísticas y monitoreo del sistema RAG.
- * Útil para:
- * - Debugging y troubleshooting
- * - Validar que el chunking funciona correctamente
- * - Monitorear el crecimiento de la base de conocimiento
- * - Métricas para el TFG (Fase 5)
+ * Punto de acceso (Endpoint) REST para la monitorización y telemetría del sistema RAG.
+ * Proporciona métricas operativas y verifica la integridad de los componentes del motor de búsqueda.
+ * 
+ * Funcionalidades clave:
+ * - Diagnóstico y resolución de incidencias técnica (Troubleshooting).
+ * - Validación del proceso de fragmentación (Chunking).
+ * - Seguimiento del volumen de la base de conocimiento.
+ * - Suministro de métricas para la evaluación del rendimiento del TFG.
  */
 @Path("/api/rag")
 @Produces(MediaType.APPLICATION_JSON)
@@ -26,23 +28,13 @@ public class RagStatsResource
 {
 
     @Inject
-    DocumentIngestionService ingestionService;
+    DocumentIngestionService servicioIngestion;
 
     /**
-     * Obtiene estadísticas detalladas del sistema RAG.
+     * Recupera estadísticas agregadas de la base de conocimiento.
      * GET /api/rag/stats
-     * Respuesta:
-     * {
-     * "documentos_procesados": 5,
-     * "total_fragmentos": 87,
-     * "chunk_size": 400,
-     * "chunk_overlap": 50,
-     * "promedio_fragmentos_por_doc": 17,
-     * "configuracion": {
-     * "maxResults": 5,
-     * "minScore": 0.7,
-     * "embedding_model": "text-embedding-004" }
-     * }
+     * 
+     * @return Response con métricas de ficheros, fragmentos y configuración del motor.
      */
     @GET
     @Path("/stats")
@@ -50,69 +42,70 @@ public class RagStatsResource
     {
         try
         {
-            Map<String, Object> stats = ingestionService.obtenerEstadisticas();
+            Map<String, Object> metricas = servicioIngestion.obtenerEstadisticas();
 
-            // Añadir configuración del RAG
-            Map<String, Object> config = new HashMap<>();
-            config.put("maxResults", 5);
-            config.put("minScore", 0.7);
-            config.put("embedding_model", "text-embedding-004");
-            config.put("embedding_dimensions", 768);
+            // Enriquecimiento con parámetros de configuración del motor RAG
+            Map<String, Object> configuracion = new HashMap<>();
+            configuracion.put("maxResults", 5);
+            configuracion.put("minScore", 0.7);
+            configuracion.put("modelo_embeddings", "text-embedding-004");
+            configuracion.put("dimensiones_vectoriales", 768);
 
-            stats.put("configuracion", config);
+            metricas.put("configuracion_motor", configuracion);
 
-            Log.infof("Estadísticas RAG solicitadas: %d docs, %s fragmentos",
-                    stats.get("documentos_procesados"),
-                    stats.get("total_fragmentos"));
+            Log.infof("Informe de métricas RAG: %d ficheros procesados, %s fragmentos generados",
+                    metricas.get("documentos_procesados"),
+                    metricas.get("total_fragmentos"));
 
-            return Response.ok(stats).build();
+            return Response.ok(metricas).build();
 
         } catch (Exception e)
         {
-            Log.errorf(e, "Error obteniendo estadísticas");
+            Log.errorf(e, "Fallo técnico al recuperar métricas operativas");
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(Map.of("error", "Error obteniendo estadísticas"))
+                    .entity(Map.of("error", "Error interno durante la consolidación de estadísticas"))
                     .build();
         }
     }
 
     /**
-     * Health check del sistema RAG.
+     * Verificación del estado de salud (Health Check) del sistema RAG.
      * GET /api/rag/health
-     * Verifica:
-     * - Conexión a pgvector
-     * - Disponibilidad del modelo de embeddings
-     * - Estado del ContentRetriever
+     * 
+     * Evalúa:
+     * - Conectividad con el almacén vectorial (pgvector).
+     * - Disponibilidad de la lógica de negocio.
+     * - Carga inicial de datos de conocimiento.
      */
     @GET
     @Path("/health")
-    public Response healthCheck()
+    public Response comprobacionEstado()
     {
         try
         {
-            Map<String, Object> health = new HashMap<>();
-            health.put("status", "UP");
-            health.put("timestamp", System.currentTimeMillis());
+            Map<String, Object> estado = new HashMap<>();
+            estado.put("estado", "OPERATIVO");
+            estado.put("marca_tiempo", System.currentTimeMillis());
 
-            // Verificar que hay documentos cargados
-            int numDocs = ingestionService.listarDocumentos().size();
-            health.put("documents_loaded", numDocs);
-            health.put("ready_for_queries", numDocs > 0);
+            // Validación de la base de conocimiento cargada
+            int numFicheros = servicioIngestion.listarDocumentos().size();
+            estado.put("ficheros_cargados", numFicheros);
+            estado.put("listo_para_consultas", numFicheros > 0);
 
-            if (numDocs == 0)
+            if (numFicheros == 0)
             {
-                health.put("message", "Sistema operativo pero sin documentos cargados");
+                estado.put("mensaje", "Sistema activo pero carece de base de conocimiento cargada.");
             }
 
-            return Response.ok(health).build();
+            return Response.ok(estado).build();
 
         } catch (Exception e)
         {
-            Log.errorf(e, "Error en health check");
+            Log.errorf(e, "Fallo crítico en la verificación de estado");
             return Response.status(Response.Status.SERVICE_UNAVAILABLE)
                     .entity(Map.of(
-                            "status", "DOWN",
-                            "error", e.getMessage()))
+                            "estado", "ERROR_CRITICO",
+                            "detalle", e.getMessage()))
                     .build();
         }
     }

@@ -12,16 +12,26 @@ public class ChatWebSocket {
     private final AsistenteService asistenteService;
 
     @Inject
-    WebSocketConnection connection;
+    WebSocketConnection conexion;
 
     public ChatWebSocket(AsistenteService asistenteService) {
         this.asistenteService = asistenteService;
     }
 
+    /**
+     * Gestiona la recepción de mensajes de texto desde el cliente.
+     * 
+     * @param mensaje Contenido textual de la petición del usuario.
+     * @return Respuesta procesada por el motor de IA, libre de trazas de
+     *         razonamiento interno.
+     */
     @OnTextMessage
-    public String onMessage(String message) {
-        String sessionId = connection.id();
-        String response = asistenteService.chat(sessionId, message);
-        return response.replaceAll("(?s)<thinking>.*?</thinking>\\s*", "");
+    public String alRecibirMensaje(String mensaje) {
+        String idSesion = conexion.id();
+        String respuesta = asistenteService.chat(idSesion, mensaje);
+
+        // Eliminación de las etiquetas de razonamiento interno (Chain of Thought) para
+        // la entrega al usuario
+        return respuesta.replaceAll("(?s)<thinking>.*?</thinking>\\s*", "");
     }
 }

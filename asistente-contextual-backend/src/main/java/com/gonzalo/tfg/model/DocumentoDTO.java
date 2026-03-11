@@ -8,14 +8,13 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * DTO (Data Transfer Object) para documentos procesados.
- * Representa un documento que ha sido ingerido en el sistema RAG.
- * Contiene tanto los metadatos del documento como información sobre
- * su procesamiento (fecha de carga, tamaño, etc.).
- * Este DTO se usa para:
- * - Respuestas del API REST (/api/documentos)
- * - Almacenamiento temporal en memoria (será entidad JPA en Fase 3)
- * - Tracking de documentos procesados
+ * Objeto de Transferencia de Datos (DTO) que representa un fichero procesado en el sistema RAG.
+ * Integra la información semántica extraída junto con sus atributos técnicos y contextuales.
+ * 
+ * Ámbitos de aplicación:
+ * - Transferencia de estado en la capa de persistencia (Fase de Ingestión).
+ * - Estructura de respuesta en el API REST (/api/documentos).
+ * - Seguimiento y trazabilidad de los recursos de conocimiento.
  */
 public record DocumentoDTO(
         @JsonProperty("id")
@@ -42,8 +41,7 @@ public record DocumentoDTO(
 )
 {
     /**
-     * Constructor simplificado para crear un documento
-     * con metadatos mínimos.
+     * Constructor auxiliar para la creación ágil de registros con metadatos predeterminados.
      */
     public DocumentoDTO(String nombre, String tipo, String contenido)
     {
@@ -59,7 +57,7 @@ public record DocumentoDTO(
     }
 
     /**
-     * Constructor para documentos con metadatos personalizados.
+     * Constructor especializado para la integración de ficheros con metadatos contextuales.
      */
     public DocumentoDTO(
             String nombre,

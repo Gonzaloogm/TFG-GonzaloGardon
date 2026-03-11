@@ -15,22 +15,22 @@ public class DocumentSystemTool
 {
 
     @Inject
-    DocumentIngestionService ingestionService;
+    DocumentIngestionService servicioIngestion;
 
-    @Tool("Obtiene la lista exacta de todos los documentos, archivos y manuales que están cargados actualmente en la base de conocimiento del sistema.")
+    @Tool("Recupera la relación detallada de todos los ficheros, manuales y documentos técnicos integrados en la base de conocimiento del sistema.")
     public String listarDocumentosDisponibles()
     {
-        Log.info("EJECUTANDO TOOL: El LLM ha solicitado la lista de documentos.");
+        Log.info("EJECUCIÓN DE HERRAMIENTA: El motor de IA solicita el inventario de ficheros.");
 
-        List<DocumentoDTO> documentos = ingestionService.listarDocumentos();
+        List<DocumentoDTO> ficheros = servicioIngestion.listarDocumentos();
 
-        if (documentos.isEmpty())
-            return "Actualmente no hay ningún documento cargado en el sistema.";
+        if (ficheros.isEmpty())
+            return "Actualmente no se han identificado ficheros cargados en el sistema.";
 
-        String listaNombres = documentos.stream()
-                .map(doc -> "- " + doc.nombre() + " (Tipo: " + doc.tipo() + ")")
+        String listado = ficheros.stream()
+                .map(f -> "- " + f.nombre() + " (Categoría: " + f.tipo() + ")")
                 .collect(Collectors.joining("\n"));
 
-        return "Los documentos disponibles actualmente en el sistema son:\n" + listaNombres;
+        return "Los ficheros actualmente disponibles en la base de conocimiento son:\n" + listado;
     }
 }

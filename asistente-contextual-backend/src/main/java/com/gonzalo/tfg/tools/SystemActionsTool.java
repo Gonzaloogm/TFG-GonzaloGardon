@@ -16,134 +16,133 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class SystemActionsTool {
 
-    @Tool("Ejecuta un comando de la terminal/shell en el sistema operativo anfitrión y devuelve el resultado. Usar con precaución. Útil para obtener información del entorno, procesos, o utilidades del sistema.")
-    public String ejecutarComandoShell(String comando) {
-        Log.warn("EJECUTANDO TOOL [SEGURIDAD - ALERTA]: El LLM ha solicitado ejecutar el comando shell: " + comando);
+    @Tool("Ejecuta una instrucción en la consola (shell) del sistema operativo anfitrión y devuelve el flujo de salida resultante. Debe emplearse con criterio técnico para labores de diagnóstico o consulta del entorno.")
+    public String ejecutarComandoConsola(String comando) {
+        Log.warn("EJECUCIÓN DE HERRAMIENTA DISCRECIONAL: El motor de IA solicita ejecución de: " + comando);
         try {
-            ProcessBuilder builder = new ProcessBuilder();
-            // Para Mac/Linux
-            builder.command("sh", "-c", comando);
+            ProcessBuilder constructorProcesos = new ProcessBuilder();
+            // Compatibilidad con sistemas basados en POSIX (Mac/Linux)
+            constructorProcesos.command("sh", "-c", comando);
 
-            Process process = builder.start();
+            Process proceso = constructorProcesos.start();
 
-            // Timeout de 10 segundos
-            boolean finished = process.waitFor(10, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroy();
-                return "Error: La ejecución del comando excedió el tiempo límite de 10 segundos y fue terminada prematuramente.";
+            // Temporizador de seguridad de 10 segundos para evitar bloqueos
+            boolean finalizado = proceso.waitFor(10, TimeUnit.SECONDS);
+            if (!finalizado) {
+                proceso.destroy();
+                return "Error operacional: La ejecución de la instrucción excedió el tiempo límite y fue abortada.";
             }
 
-            String output = capturarSalida(process.getInputStream());
-            String error = capturarSalida(process.getErrorStream());
+            String salida = capturarFlujo(proceso.getInputStream());
+            String error = capturarFlujo(proceso.getErrorStream());
 
-            if (process.exitValue() != 0) {
-                return "El comando falló con código de salida " + process.exitValue() + ".\nError:\n" + error
-                        + "\nSalida Estándar:\n" + output;
+            if (proceso.exitValue() != 0) {
+                return "La instrucción finalizó con código de error " + proceso.exitValue() + ".\nDetalle del error:\n" + error
+                        + "\nSalida estándar:\n" + salida;
             }
 
-            return output.isEmpty() ? "Comando ejecutado con éxito, pero no produjo ninguna salida en consola."
-                    : output;
+            return salida.isEmpty() ? "Instrucción completada exitosamente sin salida por consola."
+                    : salida;
         } catch (Exception e) {
-            Log.error("Error al ejecutar comando shell: " + e.getMessage());
-            return "Error interno crítico al intentar ejecutar el comando: " + e.getMessage();
+            Log.error("Fallo técnico al ejecutar comando: " + e.getMessage());
+            return "Error interno del sistema al intentar procesar la instrucción: " + e.getMessage();
         }
     }
 
-    @Tool("Lee y devuelve el contenido de un archivo de texto en el sistema anfitrión dado su ruta absoluta. Útil para inspeccionar logs, configuraciones o código. No usar para archivos binarios (ej. PDF, imágenes).")
-    public String leerArchivo(String rutaAbsoluta) {
-        Log.info("EJECUTANDO TOOL: El LLM ha solicitado leer el archivo: " + rutaAbsoluta);
+    @Tool("Consulta y devuelve el contenido íntegro de un fichero de texto en disco mediante su ruta absoluta. Recomendado para la inspección de registros (logs), ficheros de configuración o código fuente.")
+    public String leerFichero(String rutaAbsoluta) {
+        Log.info("EJECUCIÓN DE HERRAMIENTA: El motor de IA solicita lectura de: " + rutaAbsoluta);
         try {
-            Path path = Paths.get(rutaAbsoluta);
-            if (!Files.exists(path)) {
-                return "Error: El archivo no existe en la ruta especificada.";
+            Path ruta = Paths.get(rutaAbsoluta);
+            if (!Files.exists(ruta)) {
+                return "Error de acceso: No se localiza el fichero en la ruta especificada.";
             }
-            if (!Files.isRegularFile(path)) {
-                return "Error: La ruta especificada no corresponde a un archivo regular (puede ser un directorio o fichero especial).";
+            if (!Files.isRegularFile(ruta)) {
+                return "Error de formato: La ruta no corresponde a un fichero común (posible directorio o dispositivo de bloque).";
             }
-            if (!Files.isReadable(path)) {
-                return "Error: No hay suficientes permisos de lectura para acceder al archivo.";
-            }
-
-            // Limitar lectura de archivos muy grandes para prevenir saturacion de memoria o
-            // limites de token del LLM
-            long size = Files.size(path);
-            if (size > 1024 * 1024) { // 1 MB límite
-                return "Error: El archivo es demasiado grande (>" + (size / 1024)
-                        + " KB). No está permitido leer archivos mayores a 1MB completos.";
+            if (!Files.isReadable(ruta)) {
+                return "Error de privilegios: El sistema carece de permisos de lectura sobre el recurso.";
             }
 
-            return Files.readString(path);
+            // Restricción de lectura para ficheros de gran volumen (protección de memoria y límites de ventana de contexto)
+            long tamanio = Files.size(ruta);
+            if (tamanio > 1024 * 1024) { // Límite de seguridad: 1 MB
+                return "Error de volumen: El fichero excede la capacidad de lectura permitida (>" + (tamanio / 1024)
+                        + " KB).";
+            }
+
+            return Files.readString(ruta);
         } catch (Exception e) {
-            Log.error("Error al leer el archivo en la ruta " + rutaAbsoluta + ": " + e.getMessage());
-            return "Error interno al intentar leer el archivo: " + e.getMessage();
+            Log.error("Error de lectura en ruta " + rutaAbsoluta + ": " + e.getMessage());
+            return "Fallo técnico al intentar acceder al fichero: " + e.getMessage();
         }
     }
 
-    @Tool("Lista el contenido de un directorio en el sistema anfitrión dada su ruta absoluta. Muestra de forma concisa los nombres de archivos presentes en la carpeta, su tamaño y si corresponde a un directorio.")
-    public String listarDirectorio(String rutaAbsoluta) {
-        Log.info("EJECUTANDO TOOL: El LLM ha solicitado listar el directorio: " + rutaAbsoluta);
+    @Tool("Detalla el contenido de un directorio en el sistema mediante su ruta absoluta. Proporciona una visión jerárquica incluyendo nombres, tamaños y naturaleza (fichero/subdirectorio).")
+    public String listarContenidoDirectorio(String rutaAbsoluta) {
+        Log.info("EJECUCIÓN DE HERRAMIENTA: El motor de IA solicita exploración en: " + rutaAbsoluta);
         try {
-            Path path = Paths.get(rutaAbsoluta);
-            if (!Files.exists(path)) {
-                return "Error: El directorio no existe en la ruta especificada.";
+            Path ruta = Paths.get(rutaAbsoluta);
+            if (!Files.exists(ruta)) {
+                return "Error de exploración: El directorio no existe.";
             }
-            if (!Files.isDirectory(path)) {
-                return "Error: La ruta proporcionada no corresponde a un directorio válido.";
+            if (!Files.isDirectory(ruta)) {
+                return "Error de tipo: La ruta proporcionada no es un directorio válido.";
             }
 
-            return Files.list(path)
+            return Files.list(ruta)
                     .map(p -> {
                         try {
-                            String name = p.getFileName().toString();
-                            boolean isDir = Files.isDirectory(p);
-                            long size = isDir ? 0 : Files.size(p);
-                            return String.format("%s - %s (%.2f KB)", isDir ? "[DIR]" : "[FILE]", name, size / 1024.0);
+                            String nombre = p.getFileName().toString();
+                            boolean esDirectorio = Files.isDirectory(p);
+                            long tamanio = esDirectorio ? 0 : Files.size(p);
+                            return String.format("%s - %s (%.2f KB)", esDirectorio ? "[DIR]" : "[FICHERO]", nombre, tamanio / 1024.0);
                         } catch (IOException e) {
-                            return p.getFileName().toString() + " - [Error al leer propiedades]";
+                            return p.getFileName().toString() + " - [Error en lectura de atributos]";
                         }
                     })
                     .collect(Collectors.joining("\n"));
         } catch (Exception e) {
-            Log.error("Error al listar el directorio de la ruta " + rutaAbsoluta + ": " + e.getMessage());
-            return "Error interno al intentar listar el directorio: " + e.getMessage();
+            Log.error("Fallo de exploración en " + rutaAbsoluta + ": " + e.getMessage());
+            return "Error interno durante la inspección del directorio: " + e.getMessage();
         }
     }
 
-    @Tool("Devuelve información técnica básica del sistema operativo anfitrión (OS), incluyendo el nombre, versión, arquitectura y estado de la memoria RAM de la Máquina Virtual de Java (JVM).")
-    public String obtenerInformacionSistema() {
-        Log.info("EJECUTANDO TOOL: El LLM ha solicitado un reporte de información del sistema anfitrión.");
+    @Tool("Genera un reporte técnico descriptivo del sistema operativo anfitrión, arquitectura del procesador y estado de recursos de la Máquina Virtual de Java (JVM).")
+    public String obtenerEstadoSistema() {
+        Log.info("EJECUCIÓN DE HERRAMIENTA: El motor de IA solicita métricas del sistema.");
         try {
-            String osName = System.getProperty("os.name");
-            String osVersion = System.getProperty("os.version");
-            String osArch = System.getProperty("os.arch");
-            String userName = System.getProperty("user.name");
-            String userDir = System.getProperty("user.dir");
+            String nombreOS = System.getProperty("os.name");
+            String versionOS = System.getProperty("os.version");
+            String arquitectura = System.getProperty("os.arch");
+            String usuario = System.getProperty("user.name");
+            String directorioBase = System.getProperty("user.dir");
 
-            Runtime runtime = Runtime.getRuntime();
-            long maxMemory = runtime.maxMemory() / (1024 * 1024);
-            long totalMemory = runtime.totalMemory() / (1024 * 1024);
-            long freeMemory = runtime.freeMemory() / (1024 * 1024);
-            long usedMemory = totalMemory - freeMemory;
+            Runtime entornoEjecucion = Runtime.getRuntime();
+            long memoriaMaxima = entornoEjecucion.maxMemory() / (1024 * 1024);
+            long memoriaTotal = entornoEjecucion.totalMemory() / (1024 * 1024);
+            long memoriaLibre = entornoEjecucion.freeMemory() / (1024 * 1024);
+            long memoriaUsada = memoriaTotal - memoriaLibre;
 
             return String.format(
-                    "Información del Sistema Anfitrión:\n" +
-                            "- Usuario Actual en el OS: %s\n" +
-                            "- Directorio de Trabajo: %s\n" +
-                            "- Sistema Operativo: %s (Versión: %s, Arquitectura: %s)\n" +
-                            "- Rendimiento de Memoria JVM:\n" +
-                            "  * Máxima Memoria Configurada: %d MB\n" +
-                            "  * Memoria Total Asignada al Proceso: %d MB\n" +
-                            "  * Memoria Usada: %d MB\n" +
-                            "  * Memoria Libre: %d MB",
-                    userName, userDir, osName, osVersion, osArch, maxMemory, totalMemory, usedMemory, freeMemory);
+                    "Estado Técnico del Sistema Anfitrión:\n" +
+                            "- Usuario en ejecución: %s\n" +
+                            "- Directorio de despliegue: %s\n" +
+                            "- Entorno OS: %s (Versión: %s, Arquitectura: %s)\n" +
+                            "- Métricas de Memoria JVM:\n" +
+                            "  * Capacidad máxima: %d MB\n" +
+                            "  * Reservada actualmente: %d MB\n" +
+                            "  * Carga activa: %d MB\n" +
+                            "  * Disponible: %d MB",
+                    usuario, directorioBase, nombreOS, versionOS, arquitectura, memoriaMaxima, memoriaTotal, memoriaUsada, memoriaLibre);
         } catch (Exception e) {
-            return "Se produjo un error crítico al obtener la información del sistema: " + e.getMessage();
+            return "Excepción crítica durante la captura de métricas del sistema: " + e.getMessage();
         }
     }
 
-    private String capturarSalida(java.io.InputStream inputStream) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-            return reader.lines().collect(Collectors.joining("\n"));
+    private String capturarFlujo(java.io.InputStream flujoEntrada) throws IOException {
+        try (BufferedReader lector = new BufferedReader(new InputStreamReader(flujoEntrada))) {
+            return lector.lines().collect(Collectors.joining("\n"));
         }
     }
 }

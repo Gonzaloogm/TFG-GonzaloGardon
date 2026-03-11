@@ -16,15 +16,16 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Endpoint REST para la gestión de documentos.
- * Parte del "Módulo de Ingestión" según el diagrama de arquitectura (Nivel 3).
- * Responsable de recibir documentos vía HTTP y delegarlos al servicio de ingestión.
- * Flujo:
- * 1. Usuario sube documento vía POST /api/documentos/upload
- * 2. Validación de tipo de archivo (PDF, DOCX, TXT)
- * 3. Validación de tamaño (máx 10MB por defecto)
- * 4. Delegación a DocumentIngestionService para procesamiento
- * 5. Respuesta con ID del documento procesado
+ * Punto de acceso (Endpoint) REST para la gestión y administración de ficheros.
+ * Integra el "Módulo de Ingestión" según el diseño arquitectónico del sistema.
+ * Responsable de la recepción de flujos de datos vía HTTP y su delegación al motor de ingestión.
+ *
+ * Protocolo de operación:
+ * 1. Recepción del fichero mediante petición POST multipart en /api/documentos/upload.
+ * 2. Validación técnica de formato (PDF, DOCX, TXT).
+ * 3. Validación de restricciones de tamaño (límite establecido en 10MB).
+ * 4. Invocación del servicio DocumentIngestionService para su procesamiento semántico.
+ * 5. Notificación del resultado con el identificador del recurso generado.
  */
 @Path("/api/documentos")
 @Produces(MediaType.APPLICATION_JSON)
@@ -49,97 +50,97 @@ public class DocumentResource
     @POST
     @Path("/upload")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
-    public Response uploadDocumento(
-            @RestForm("file") FileUpload file,
+    public Response subirDocumento(
+            @RestForm("file") FileUpload ficheroCargado,
             @RestForm("metadatos") String metadatos
     )
     {
-        Log.infof("Recibiendo documento: %s", file.fileName());
+        Log.infof("Petición de subida recibida: %s", ficheroCargado.fileName());
 
         try
         {
-            // 1. Validar que el archivo existe
-            if (file == null || file.fileName() == null || file.fileName().isBlank()) {
-                Log.warn("Archivo no proporcionado");
+            // 1. Verificación de la integridad del fichero en la petición
+            if (ficheroCargado == null || ficheroCargado.fileName() == null || ficheroCargado.fileName().isBlank()) {
+                Log.warn("Intento de subida sin contenido de fichero");
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(new ErrorResponse("El archivo es obligatorio"))
+                        .entity(new ErrorResponse("Es obligatorio adjuntar un fichero de datos"))
                         .build();
             }
 
-            // 2. Validar tipo de archivo
-            String contentType = file.contentType();
-            if (!TIPOS_PERMITIDOS.contains(contentType))
+            // 2. Validación del tipo MIME (Multipurpose Internet Mail Extensions)
+            String tipoMime = ficheroCargado.contentType();
+            if (!TIPOS_PERMITIDOS.contains(tipoMime))
             {
-                Log.warnf("Tipo de archivo no permitido: %s", contentType);
+                Log.warnf("Formato de fichero no soportado: %s", tipoMime);
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(new ErrorResponse("Tipo de archivo no permitido. Solo se aceptan: PDF, DOCX, DOC, TXT"))
+                        .entity(new ErrorResponse("Formato incompatible. Extensiones soportadas: PDF, DOCX, DOC, TXT"))
                         .build();
             }
 
-            // 3. Validar tamaño
-            long tamanio = Files.size(file.filePath());
-            if (tamanio > TAMANIO_MAXIMO)
+            // 3. Control de cuota de tamaño
+            long tamanioEfectivo = Files.size(ficheroCargado.filePath());
+            if (tamanioEfectivo > TAMANIO_MAXIMO)
             {
-                Log.warnf("Archivo muy grande: %d bytes", tamanio);
+                Log.warnf("Exceso de tamaño detectado: %d bytes", tamanioEfectivo);
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(new ErrorResponse("El archivo excede el tamaño máximo de 10MB"))
+                        .entity(new ErrorResponse("El fichero sobrepasa el límite máximo permitido de 10MB"))
                         .build();
             }
 
-            // 4. Procesar el documento
-            Log.infof("Archivo validado. Iniciando ingestión...");
-            DocumentoDTO documento = ingestionService.ingerirDocumento(
-                    file.filePath(),
-                    file.fileName(),
+            // 4. Delegación al flujo de ingestión semántica
+            Log.infof("Fichero validado técnicamente. Iniciando fase de ingestión...");
+            DocumentoDTO resultado = ingestionService.ingerirFichero(
+                    ficheroCargado.filePath(),
+                    ficheroCargado.fileName(),
                     metadatos
             );
 
-            Log.infof("Documento procesado exitosamente: %s", documento.id());
+            Log.infof("Proceso de ingestión finalizado con éxito. Recurso ID: %s", resultado.id());
 
-            // 5. Retornar respuesta exitosa
+            // 5. Respuesta de confirmación de creación (HTTP 201 Created)
             return Response.status(Response.Status.CREATED)
-                    .entity(documento)
+                    .entity(resultado)
                     .build();
 
         } catch (IOException e)
         {
-            Log.errorf(e, "Error leyendo archivo: %s", file.fileName());
+            Log.errorf(e, "Fallo en la lectura del flujo de datos: %s", ficheroCargado.fileName());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(new ErrorResponse("Error procesando el archivo: " + e.getMessage()))
+                    .entity(new ErrorResponse("Error durante el procesamiento del flujo de datos: " + e.getMessage()))
                     .build();
         } catch (Exception e)
         {
-            Log.errorf(e, "Error inesperado procesando documento");
+            Log.errorf(e, "Excepción no controlada durante la subida del fichero");
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(new ErrorResponse("Error interno del servidor"))
+                    .entity(new ErrorResponse("Error interno de servidor no especificado"))
                     .build();
         }
     }
 
     /**
-     * Endpoint para listar todos los documentos procesados.
-     * @return Lista de documentos
+     * Endpoint para la recuperación síncrona del catálogo completo de ficheros.
+     * @return Colección de objetos DocumentoDTO.
      */
     @GET
     public Response listarDocumentos()
     {
         try
         {
-            List<DocumentoDTO> documentos = ingestionService.listarDocumentos();
-            return Response.ok(documentos).build();
+            List<DocumentoDTO> catalogo = ingestionService.listarDocumentos();
+            return Response.ok(catalogo).build();
         } catch (Exception e)
         {
-            Log.errorf(e, "Error listando documentos");
+            Log.errorf(e, "Fallo en la recuperación del catálogo");
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(new ErrorResponse("Error obteniendo documentos"))
+                    .entity(new ErrorResponse("No se pudo obtener la lista de ficheros"))
                     .build();
         }
     }
 
     /**
-     * Endpoint para obtener un documento por ID.
-     * @param id ID del documento
-     * @return Documento encontrado
+     * Endpoint para la consulta detallada de un recurso por su ID.
+     * @param id Identificador único del fichero.
+     * @return DocumentoDTO correspondiente o error 404.
      */
     @GET
     @Path("/{id}")
@@ -147,27 +148,27 @@ public class DocumentResource
     {
         try
         {
-            DocumentoDTO documento = ingestionService.obtenerDocumento(id);
-            if (documento == null)
+            DocumentoDTO recurso = ingestionService.obtenerDocumento(id);
+            if (recurso == null)
             {
                 return Response.status(Response.Status.NOT_FOUND)
-                        .entity(new ErrorResponse("Documento no encontrado"))
+                        .entity(new ErrorResponse("Recurso no localizado en la base de conocimiento"))
                         .build();
             }
-            return Response.ok(documento).build();
+            return Response.ok(recurso).build();
         } catch (Exception e)
         {
-            Log.errorf(e, "Error obteniendo documento: %s", id);
+            Log.errorf(e, "Fallo en la consulta del recurso con ID: %s", id);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(new ErrorResponse("Error obteniendo documento"))
+                    .entity(new ErrorResponse("Error en la recuperación del recurso solicitado"))
                     .build();
         }
     }
 
     /**
-     * Endpoint para eliminar un documento.
-     * @param id ID del documento a eliminar
-     * @return Response 204 No Content si se eliminó correctamente
+     * Endpoint para la eliminación física y lógica de un recurso.
+     * @param id Identificador único del fichero a purgar.
+     * @return Response 204 No Content en éxito o error 404.
      */
     @DELETE
     @Path("/{id}")
@@ -175,20 +176,20 @@ public class DocumentResource
     {
         try
         {
-            boolean eliminado = ingestionService.eliminarDocumento(id);
-            if (!eliminado)
+            boolean resultadoPurga = ingestionService.eliminarDocumento(id);
+            if (!resultadoPurga)
             {
                 return Response.status(Response.Status.NOT_FOUND)
-                        .entity(new ErrorResponse("Documento no encontrado"))
+                        .entity(new ErrorResponse("No se pudo purgar: recurso no localizado"))
                         .build();
             }
-            Log.infof("🗑️ Documento eliminado: %s", id);
+            Log.infof("🗑️ Purga confirmada para el recurso: %s", id);
             return Response.noContent().build();
         } catch (Exception e)
         {
-            Log.errorf(e, "Error eliminando documento: %s", id);
+            Log.errorf(e, "Fallo durante la operación de purga del recurso: %s", id);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(new ErrorResponse("Error eliminando documento"))
+                    .entity(new ErrorResponse("Error interno durante la purga del fichero"))
                     .build();
         }
     }
