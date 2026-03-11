@@ -60,7 +60,7 @@ Asegúrate de tener instalado en tu sistema:
 ### 2. Clonar el repositorio
 Descarga el código fuente en tu máquina local:
 ```bash
-git clone [https://github.com/tu-usuario/asistente-contextual-backend.git](https://github.com/tu-usuario/asistente-contextual-backend.git)
+git clone [https://github.com/tu-usuario/asistente-contextual-backend.git](https://github.com/Gonzaloogm/asistente-contextual-backend.git)
 cd asistente-contextual-backend
 ```
 
@@ -79,8 +79,17 @@ $env:QUARKUS_LANGCHAIN4J_AI_GEMINI_CHAT_MODEL_API_KEY="tu_clave_api_aqui"
 
 ### 4. Levantar la Base de Datos
 Inicia el contenedor de PostgreSQL con la extensión pgvector configurada en el proyecto:
-```bash
-docker-compose up -d
+```
+bash
+docker run -d \
+  --name pgvector-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=postgres \
+  -p 5432:5432 \
+  pgvector/pgvector:pg16
+```
+*(Nota: Asegúrate de que las credenciales y el puerto coincidan con tu configuración de `application.properties`. Si prefieres usar los Dev Services integrados de Quarkus, este paso se realiza automáticamente al compilar).*er-compose up -d
 ```
 *(Nota: Si usas los Dev Services de Quarkus, este paso se realiza automáticamente al iniciar la aplicación).*
 
@@ -112,7 +121,7 @@ Si deseas desplegar la aplicación o probar su rendimiento real empaquetada como
 ```
 *(En Windows usa `mvnw.cmd clean package -DskipTests`)*
 
-2. **Ejecutar el archivo compilado:**
+2. **Ejecutar:**
 ```bash
 java -jar target/quarkus-app/quarkus-run.jar
 ```
