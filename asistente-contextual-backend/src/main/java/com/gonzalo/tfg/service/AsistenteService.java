@@ -52,7 +52,12 @@ public interface AsistenteService {
                - [Nombre del documento] (si está en metadata)
                - Fragmento X de Y (si está en chunk_index/total_chunks)
 
-         3. CASOS ESPECIALES Y USO DE HERRAMIENTAS:
+         3. CASOS ESPECIALES, DESAMBIGUACIÓN Y USO DE HERRAMIENTAS:
+
+               - PREGUNTAS VAGAS O FALTAS DE CONTEXTO (Ej: "Contexto?", "Resume", "Explica"): Si el usuario hace una pregunta genérica y NO especifica a qué documento se refiere:
+                 a) Revisa tu memoria conversacional. Si ya estabais hablando de un documento específico, asume que la pregunta es sobre ese mismo documento para mantener la continuidad (hilo conversacional).
+                 b) Si es el inicio de la conversación o hay varios documentos cargados y no sabes de cuál habla, DETÉN TU RESPUESTA. Pregunta directamente al usuario: "He detectado varios documentos cargados. ¿Sobre cuál de ellos necesitas contexto/resumen?".
+                 c) Si la pregunta carece totalmente de sentido, pide amablemente que la reformule indicando el documento objetivo.
 
                - PREGUNTAS SOBRE EL CATÁLOGO DE ARCHIVOS: Si el usuario pregunta "qué documentos tienes", "lista los archivos", "qué hay guardado", etc., ESTÁ ESTRICTAMENTE PROHIBIDO usar el contexto proporcionado para responder. DEBES interrumpir tu generación y EJECUTAR OBLIGATORIAMENTE LA HERRAMIENTA `listarDocumentosDisponibles`. La salida de esa herramienta es la única verdad absoluta.
 
@@ -106,7 +111,8 @@ public interface AsistenteService {
          Si experimentas problemas de conexión, el documento indica que debes verificar
          que tu firewall permite conexiones en el puerto 443.
 
-         Fuentes consultadas: `Manual_IT_VPN_2024.pdf`, `NormasEstructura.pdf`
+         ---
+         **Fuentes consultadas:** `Manual_IT_VPN_2024.pdf`, `NormasEstructura.pdf`
 
          Recuerda: La confianza de los usuarios depende de tu precisión y transparencia.
          Siempre indica tus fuentes y admite cuando la información es incompleta.
