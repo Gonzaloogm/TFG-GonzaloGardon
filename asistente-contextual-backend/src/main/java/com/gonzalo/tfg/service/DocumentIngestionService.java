@@ -28,18 +28,20 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Servicio de Ingestión de Ficheros - Implementación de operaciones CRUD.
- * Implementa el "Módulo de Ingestión" según el diseño de arquitectura.
- * Responsabilidades:
- * 1. Extracción de texto de documentos (PDF, DOCX, TXT).
- * 2. Segmentación (fragmentación) con solapamiento (300 tokens, solapamiento 30).
- * 3. Generación de vectores de características (embeddings) mediante text-embedding-004 de Gemini.
- * 4. Almacenamiento persistente en base de datos vectorial (pgvector).
- * 5. Gestión del registro de metadatos de ficheros procesados.
- *
- * Flujo de procesamiento:
- * Fichero → Extracción → Fragmentación → Vectores → pgvector
+/*
+ Servicio de Ingestión de Ficheros - Implementación de operaciones CRUD.
+ Implementa el "Módulo de Ingestión" según el diseño de arquitectura.
+ Responsabilidades:
+ 1. Extracción de texto de documentos (PDF, DOCX, TXT).
+ 2. Segmentación (fragmentación) con solapamiento (300 tokens, solapamiento
+ 30).
+ 3. Generación de vectores de características (embeddings) mediante
+ text-embedding-004 de Gemini.
+ 4. Almacenamiento persistente en base de datos vectorial (pgvector).
+ 5. Gestión del registro de metadatos de ficheros procesados.
+
+ Flujo de procesamiento:
+ Fichero → Extracción → Fragmentación → Vectores → pgvector
  */
 @ApplicationScoped
 public class DocumentIngestionService {
@@ -63,28 +65,31 @@ public class DocumentIngestionService {
     @Inject
     ObjectMapper objectMapper;
 
-    /**
-     * Inicializa el servicio cargando el catálogo persistente desde disco.
+    /*
+     Inicializa el servicio cargando el catálogo persistente desde disco.
      */
     @PostConstruct
     void inicializar() {
         File archivoCatalogo = new File(FICHERO_CATALOGO);
         if (archivoCatalogo.exists()) {
             try {
-                List<DocumentoDTO> lista = objectMapper.readValue(archivoCatalogo, new TypeReference<List<DocumentoDTO>>() {
-                });
+                List<DocumentoDTO> lista = objectMapper.readValue(archivoCatalogo,
+                        new TypeReference<List<DocumentoDTO>>() {
+                        });
                 for (DocumentoDTO doc : lista) {
                     registroDocumentos.put(doc.id(), doc);
                 }
-                Log.infof("Catálogo de la base de conocimiento cargado correctamente desde %s (%d ficheros)", FICHERO_CATALOGO, lista.size());
+                Log.infof("Catálogo de la base de conocimiento cargado correctamente desde %s (%d ficheros)",
+                        FICHERO_CATALOGO, lista.size());
             } catch (Exception e) {
                 Log.errorf(e, "Error crítico al cargar el catálogo desde %s", FICHERO_CATALOGO);
             }
         }
     }
 
-    /**
-     * Persiste el estado actual del registro de documentos en el sistema de ficheros.
+    /*
+     Persiste el estado actual del registro de documentos en el sistema de
+     ficheros.
      */
     private void guardarCatalogo() {
         try {
@@ -96,13 +101,13 @@ public class DocumentIngestionService {
         }
     }
 
-    /**
-     * Procesa e ingiere un nuevo fichero en el sistema.
-     *
-     * @param rutaFichero    Ruta local del fichero temporal.
-     * @param nombreOriginal Nombre original proporcionado por el cliente.
-     * @param metadatosJson  Cadena JSON con metadatos adicionales opcionales.
-     * @return DocumentoDTO con la información del fichero procesado.
+    /*
+     Procesa e ingiere un nuevo fichero en el sistema.
+
+     @param rutaFichero    Ruta local del fichero temporal.
+     @param nombreOriginal Nombre original proporcionado por el cliente.
+     @param metadatosJson  Cadena JSON con metadatos adicionales opcionales.
+     @return DocumentoDTO con la información del fichero procesado.
      */
     public DocumentoDTO ingerirFichero(Path rutaFichero, String nombreOriginal, String metadatosJson) {
         Log.infof("Iniciando proceso de ingestión para el fichero: %s", nombreOriginal);
@@ -161,30 +166,31 @@ public class DocumentIngestionService {
         }
     }
 
-    /**
-     * Recupera la lista completa de ficheros registrados en el sistema.
-     *
-     * @return Lista de objetos DocumentoDTO.
+    /*
+     Recupera la lista completa de ficheros registrados en el sistema.
+     
+     @return Lista de objetos DocumentoDTO.
      */
     public List<DocumentoDTO> listarDocumentos() {
         return new ArrayList<>(registroDocumentos.values());
     }
 
-    /**
-     * Recupera la información de un fichero específico mediante su identificador único.
-     *
-     * @param id Identificador del fichero.
-     * @return Objeto DocumentoDTO o null si no se encuentra en el registro.
+    /*
+     Recupera la información de un fichero específico mediante su identificador
+     único.
+     
+     @param id Identificador del fichero.
+     @return Objeto DocumentoDTO o null si no se encuentra en el registro.
      */
     public DocumentoDTO obtenerDocumento(String id) {
         return registroDocumentos.get(id);
     }
 
-    /**
-     * Elimina de forma lógica y física (vectores) un fichero del sistema.
-     *
-     * @param identificador Identificador único (UUID) o nombre literal del fichero.
-     * @return true si la operación se completó con éxito; false en caso contrario.
+    /*
+     Elimina de forma lógica y física (vectores) un fichero del sistema.
+     
+     @param identificador Identificador único (UUID) o nombre literal del fichero.
+     @return true si la operación se completó con éxito; false en caso contrario.
      */
     public boolean eliminarDocumento(String identificador) {
 
@@ -210,7 +216,8 @@ public class DocumentIngestionService {
 
             // 3. Purga en la base de datos vectorial
             try {
-                // Se utiliza la clave de metadatos 'nombre_archivo' para localizar los vectores huérfanos
+                // Se utiliza la clave de metadatos 'nombre_archivo' para localizar los vectores
+                // huérfanos
                 Filter filtro = MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(nombreTraza);
                 storeVectores.removeAll(filtro);
                 Log.infof("🗑️ Vectores de características eliminados para el recurso: %s", nombreTraza);
@@ -227,10 +234,11 @@ public class DocumentIngestionService {
         return false;
     }
 
-    /**
-     * Transforma segmentos de texto en vectores y los persiste en el almacén vectorial.
-     *
-     * @param segmentos Lista de fragmentos de texto generados.
+    /*
+     Transforma segmentos de texto en vectores y los persiste en el almacén
+     vectorial.
+     
+     @param segmentos Lista de fragmentos de texto generados.
      */
     private void almacenarSegmentos(List<TextSegment> segmentos) {
         for (TextSegment segmento : segmentos) {
@@ -244,11 +252,12 @@ public class DocumentIngestionService {
         Log.infof("💾 %d vectores de características almacenados en la base de datos", segmentos.size());
     }
 
-    /**
-     * Determina el analizador de contenido óptimo basándose en la naturaleza del fichero.
-     *
-     * @param nombreFichero Nombre completo del fichero.
-     * @return Implementación de DocumentParser adecuada.
+    /*
+     Determina el analizador de contenido óptimo basándose en la naturaleza del
+     fichero.
+     
+     @param nombreFichero Nombre completo del fichero.
+     @return Implementación de DocumentParser adecuada.
      */
     private DocumentParser crearAnalizador(String nombreFichero) {
         String extension = obtenerExtension(nombreFichero).toLowerCase();
@@ -263,11 +272,11 @@ public class DocumentIngestionService {
         };
     }
 
-    /**
-     * Procesa una cadena JSON para extraer un mapa de metadatos.
-     *
-     * @param metadatosJson Cadena en formato JSON.
-     * @return Mapa asociativo de metadatos.
+    /*
+     Procesa una cadena JSON para extraer un mapa de metadatos.
+     
+     @param metadatosJson Cadena en formato JSON.
+     @return Mapa asociativo de metadatos.
      */
     private Map<String, String> parsearMetadatos(String metadatosJson) {
         if (metadatosJson == null || metadatosJson.isBlank()) {
@@ -283,16 +292,17 @@ public class DocumentIngestionService {
         }
     }
 
-    /**
-     * Extrae el sufijo de extensión de un nombre de fichero.
+    /*
+     Extrae el sufijo de extensión de un nombre de fichero.
      */
     private String obtenerExtension(String nombreFichero) {
         int ultimoPunto = nombreFichero.lastIndexOf('.');
         return ultimoPunto > 0 ? nombreFichero.substring(ultimoPunto + 1) : "";
     }
 
-    /**
-     * Clasifica el tipo de fichero según su extensión para una visualización amigable.
+    /*
+     Clasifica el tipo de fichero según su extensión para una visualización
+     amigable.
      */
     private String obtenerTipoFichero(String nombreFichero) {
         String extension = obtenerExtension(nombreFichero).toLowerCase();
@@ -306,8 +316,8 @@ public class DocumentIngestionService {
         };
     }
 
-    /**
-     * Genera un reporte estadístico del estado del sistema de ingestión.
+    /*
+     Genera un reporte estadístico del estado del sistema de ingestión.
      */
     public Map<String, Object> obtenerEstadisticas() {
         Map<String, Object> estadisticas = new HashMap<>();

@@ -16,6 +16,9 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class SystemActionsTool {
 
+    /*
+     Ejecuta una instrucción en la consola (shell) del sistema operativo anfitrión y devuelve el flujo de salida resultante. Debe emplearse con criterio técnico para labores de diagnóstico o consulta del entorno.
+     */
     @Tool("Ejecuta una instrucción en la consola (shell) del sistema operativo anfitrión y devuelve el flujo de salida resultante. Debe emplearse con criterio técnico para labores de diagnóstico o consulta del entorno.")
     public String ejecutarComandoConsola(String comando) {
         Log.warn("EJECUCIÓN DE HERRAMIENTA DISCRECIONAL: El motor de IA solicita ejecución de: " + comando);
@@ -49,6 +52,9 @@ public class SystemActionsTool {
         }
     }
 
+    /*
+     Consulta y devuelve el contenido íntegro de un fichero de texto en disco mediante su ruta absoluta. Recomendado para la inspección de registros (logs), ficheros de configuración o código fuente.
+     */
     @Tool("Consulta y devuelve el contenido íntegro de un fichero de texto en disco mediante su ruta absoluta. Recomendado para la inspección de registros (logs), ficheros de configuración o código fuente.")
     public String leerFichero(String rutaAbsoluta) {
         Log.info("EJECUCIÓN DE HERRAMIENTA: El motor de IA solicita lectura de: " + rutaAbsoluta);
@@ -78,6 +84,9 @@ public class SystemActionsTool {
         }
     }
 
+    /*
+     Detalla el contenido de un directorio en el sistema mediante su ruta absoluta. Proporciona una visión jerárquica incluyendo nombres, tamaños y naturaleza (fichero/subdirectorio).
+     */
     @Tool("Detalla el contenido de un directorio en el sistema mediante su ruta absoluta. Proporciona una visión jerárquica incluyendo nombres, tamaños y naturaleza (fichero/subdirectorio).")
     public String listarContenidoDirectorio(String rutaAbsoluta) {
         Log.info("EJECUCIÓN DE HERRAMIENTA: El motor de IA solicita exploración en: " + rutaAbsoluta);
@@ -108,6 +117,9 @@ public class SystemActionsTool {
         }
     }
 
+    /*
+     Genera un reporte técnico descriptivo del sistema operativo anfitrión, arquitectura del procesador y estado de recursos de la Máquina Virtual de Java (JVM).
+     */
     @Tool("Genera un reporte técnico descriptivo del sistema operativo anfitrión, arquitectura del procesador y estado de recursos de la Máquina Virtual de Java (JVM).")
     public String obtenerEstadoSistema() {
         Log.info("EJECUCIÓN DE HERRAMIENTA: El motor de IA solicita métricas del sistema.");

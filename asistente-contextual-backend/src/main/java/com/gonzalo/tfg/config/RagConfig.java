@@ -2,8 +2,6 @@ package com.gonzalo.tfg.config;
 
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.memory.chat.ChatMemoryProvider;
-import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.store.embedding.EmbeddingStore;
@@ -12,29 +10,17 @@ import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 
-/**
- * Configuración avanzada del motor de Generación Aumentada por Recuperación (RAG).
- * Parámetros de rendimiento calibrados:
- * - maxResults: 5 (equilibrio óptimo entre exhaustividad y precisión).
- * - minScore: 0.7 (umbral de relevancia mediante similitud de coseno).
- * - Soporte nativo para el filtrado semántico por metadatos.
- * 
- * Basado en las especificaciones del diseño de arquitectura nivel 3.
+/*
+ Configuración avanzada del motor de Generación Aumentada por Recuperación (RAG).
+ Parámetros de rendimiento calibrados:
+ - maxResults: 5 (equilibrio óptimo entre exhaustividad y precisión).
+ - minScore: 0.7 (umbral de relevancia mediante similitud de coseno).
+ - Soporte nativo para el filtrado semántico por metadatos.
+ 
+ Basado en las especificaciones del diseño de arquitectura nivel 3.
  */
 @ApplicationScoped
 public class RagConfig {
-
-  /**
-   * Generador de memoria volátil para la gestión del contexto dialógico.
-   * Restringe la ventana de historial a los últimos 10 mensajes para mitigar la degradación semántica.
-   */
-  @Produces
-  public ChatMemoryProvider proveedorMemoriaChat() {
-    return idMemoria -> MessageWindowChatMemory.builder()
-        .id(idMemoria)
-        .maxMessages(10)
-        .build();
-  }
 
   @Produces
   @ApplicationScoped
@@ -44,7 +30,8 @@ public class RagConfig {
 
     Log.info("Inicializando RetrievalAugmentor con motor de inyección de metadatos");
 
-    // 1. Definición del Recuperador (Búsqueda semántica sobre pgvector con umbral de filtrado)
+    // 1. Definición del Recuperador (Búsqueda semántica sobre pgvector con umbral
+    // de filtrado)
     ContentRetriever recuperadorContenido = EmbeddingStoreContentRetriever.builder()
         .embeddingStore(storeVectores)
         .embeddingModel(modeloVectores)
@@ -66,18 +53,6 @@ public class RagConfig {
         .build();
   }
 
-  /**
-   * Crea un ContentRetriever con filtro de metadatos.
-   * Ejemplo de uso:
-   * var retriever = createFilteredRetriever(embeddingStore, embeddingModel,
-   * filter -> filter.eq("departamento", "IT"));
-   * 
-   * @param embeddingStore Store de embeddings
-   * @param embeddingModel Modelo de embeddings
-   * @param filterKey      Clave de metadato a filtrar
-   * @param filterValue    Valor del metadato
-   * @return ContentRetriever filtrado
-   */
   public static ContentRetriever createFilteredRetriever(
       EmbeddingStore<TextSegment> embeddingStore,
       EmbeddingModel embeddingModel,

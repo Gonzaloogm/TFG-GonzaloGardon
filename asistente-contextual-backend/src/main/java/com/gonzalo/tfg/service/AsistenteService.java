@@ -6,24 +6,24 @@ import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import io.quarkiverse.langchain4j.RegisterAiService;
 
-/**
- * Servicio de IA optimizado para RAG (Retrieval-Augmented Generation).
- * MEJORAS EN EL PROMPT:
- * 1. Instrucciones claras sobre uso del contexto
- * 2. Formato estructurado para citar fuentes
- * 3. Manejo explícito de casos sin contexto suficiente
- * 4. Directrices para sintetizar múltiples fragmentos
- * El sistema RAG funciona así:
- * 1. Usuario hace pregunta
- * 2. ContentRetriever busca fragmentos relevantes (top-5, score >0.7)
- * 3. LangChain4j inyecta fragmentos en el contexto automáticamente
- * 4. Este prompt guía al modelo para usar bien ese contexto
+/*
+ Servicio de IA optimizado para RAG (Retrieval-Augmented Generation).
+ MEJORAS EN EL PROMPT:
+ 1. Instrucciones claras sobre uso del contexto
+ 2. Formato estructurado para citar fuentes
+ 3. Manejo explícito de casos sin contexto suficiente
+ 4. Directrices para sintetizar múltiples fragmentos
+ El sistema RAG funciona así:
+ 1. Usuario hace pregunta
+ 2. ContentRetriever busca fragmentos relevantes (top-5, score >0.7)
+ 3. LangChain4j inyecta fragmentos en el contexto automáticamente
+ 4. Este prompt guía al modelo para usar bien ese contexto
  */
 
 @RegisterAiService(tools = { DocumentSystemTool.class, SystemActionsTool.class })
 public interface AsistenteService {
 
-   /**
+   /*
     * Método principal de chat con RAG optimizado.
     * El @SystemMessage define el comportamiento del asistente.
     * Es CRÍTICO para la calidad de las respuestas RAG.
@@ -54,10 +54,15 @@ public interface AsistenteService {
 
          3. CASOS ESPECIALES, DESAMBIGUACIÓN Y USO DE HERRAMIENTAS:
 
-               - PREGUNTAS VAGAS O FALTAS DE CONTEXTO (Ej: "Contexto?", "Resume", "Explica"): Si el usuario hace una pregunta genérica y NO especifica a qué documento se refiere:
-                 a) Revisa tu memoria conversacional. Si ya estabais hablando de un documento específico, asume que la pregunta es sobre ese mismo documento para mantener la continuidad (hilo conversacional).
-                 b) Si es el inicio de la conversación o hay varios documentos cargados y no sabes de cuál habla, DETÉN TU RESPUESTA. Pregunta directamente al usuario: "He detectado varios documentos cargados. ¿Sobre cuál de ellos necesitas contexto/resumen?".
-                 c) Si la pregunta carece totalmente de sentido, pide amablemente que la reformule indicando el documento objetivo.
+               - SALUDOS Y CORTESÍA: Si el usuario te saluda (ej. "Hola", "Buenos días", "Qué tal"), IGNORA COMPLETAMENTE el contexto inyectado. Limítate a devolver el saludo cordialmente, preséntate como el Asistente Contextual Corporativo y pregúntale qué documento desea consultar o en qué le puedes ayudar.
+
+               - PREGUNTAS VAGAS O FALTAS DE CONTEXTO (Ej: "Contexto?", "Resume", "Explica"):
+                 ¡ALERTA DE SEGURIDAD! Aunque el motor de búsqueda te haya inyectado fragmentos de texto a continuación, IGNÓRALOS POR COMPLETO. El sistema RAG a veces inyecta contexto irrelevante ante preguntas cortas.
+                 a) Si NO sabes de qué documento concreto está hablando el usuario, DETÉN TU RESPUESTA INMEDIATAMENTE.
+                 b) Pregunta OBLIGATORIAMENTE: "He detectado varios documentos cargados. ¿Sobre cuál de ellos necesitas contexto/resumen?".
+                 c) NO resumas el contexto inyectado bajo ninguna circunstancia hasta que el usuario aclare el nombre del archivo.
+
+               - FLEXIBILIDAD EN NOMBRES DE ARCHIVO: Si el usuario menciona un nombre de archivo parcial, aproximado o incompleto (ej. "anteproyecto" en lugar de "AnteproyectoB_GonzaloGardon.pdf"), COMPARA inteligentemente con tu lista de documentos. Si la coincidencia es obvia, asume el documento correcto y RESPONDE DIRECTAMENTE sin pedir confirmación.
 
                - PREGUNTAS SOBRE EL CATÁLOGO DE ARCHIVOS: Si el usuario pregunta "qué documentos tienes", "lista los archivos", "qué hay guardado", etc., ESTÁ ESTRICTAMENTE PROHIBIDO usar el contexto proporcionado para responder. DEBES interrumpir tu generación y EJECUTAR OBLIGATORIAMENTE LA HERRAMIENTA `listarDocumentosDisponibles`. La salida de esa herramienta es la única verdad absoluta.
 
@@ -65,7 +70,7 @@ public interface AsistenteService {
 
                - PRONOMBRES Y MEMORIA: Si el usuario usa palabras como "él", "ellos", "esos", "los mismos", revisa el historial de la conversación para entender a qué se refiere antes de responder.
 
-               - COMPARATIVAS GLOBALES: Si el usuario te pide comparar documentos enteros o hacer un resumen global, explícale amablemente que tu arquitectura actual (RAG) funciona buscando fragmentos específicos de texto y que necesitas que te haga una pregunta concreta sobre un tema puntual.
+               - RESÚMENES GLOBALES Y COMPARATIVAS: Si el usuario te pide un "resumen" de un documento entero, adviértele brevemente de que tu sistema RAG solo recupera los fragmentos más relevantes, pero HAZ EL ESFUERZO de proporcionarle el mejor resumen posible basado en la información parcial que el buscador te haya devuelto, en lugar de negarte a contestar.
 
                - Si NO HAY contexto suficiente:
                "No encuentro información específica sobre [tema] en la documentación disponible. Opciones:

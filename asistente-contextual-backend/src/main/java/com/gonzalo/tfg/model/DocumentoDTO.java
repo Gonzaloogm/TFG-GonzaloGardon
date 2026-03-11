@@ -7,14 +7,14 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Objeto de Transferencia de Datos (DTO) que representa un fichero procesado en el sistema RAG.
- * Integra la información semántica extraída junto con sus atributos técnicos y contextuales.
- * 
- * Ámbitos de aplicación:
- * - Transferencia de estado en la capa de persistencia (Fase de Ingestión).
- * - Estructura de respuesta en el API REST (/api/documentos).
- * - Seguimiento y trazabilidad de los recursos de conocimiento.
+/*
+ Objeto de Transferencia de Datos (DTO) que representa un fichero procesado en el sistema RAG.
+ Integra la información semántica extraída junto con sus atributos técnicos y contextuales.
+ 
+ Ámbitos de aplicación:
+ - Transferencia de estado en la capa de persistencia (Fase de Ingestión).
+ - Estructura de respuesta en el API REST (/api/documentos).
+ - Seguimiento y trazabilidad de los recursos de conocimiento.
  */
 public record DocumentoDTO(
         @JsonProperty("id")
@@ -40,8 +40,8 @@ public record DocumentoDTO(
         Long tamanioBytes
 )
 {
-    /**
-     * Constructor auxiliar para la creación ágil de registros con metadatos predeterminados.
+    /*
+     Constructor auxiliar para la creación ágil de registros con metadatos predeterminados.
      */
     public DocumentoDTO(String nombre, String tipo, String contenido)
     {
@@ -56,8 +56,8 @@ public record DocumentoDTO(
         );
     }
 
-    /**
-     * Constructor especializado para la integración de ficheros con metadatos contextuales.
+    /*
+     Constructor especializado para la integración de ficheros con metadatos contextuales.
      */
     public DocumentoDTO(
             String nombre,

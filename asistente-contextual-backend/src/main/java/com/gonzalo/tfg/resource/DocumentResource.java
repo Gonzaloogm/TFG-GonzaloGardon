@@ -15,17 +15,17 @@ import java.nio.file.Files;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Punto de acceso (Endpoint) REST para la gestión y administración de ficheros.
- * Integra el "Módulo de Ingestión" según el diseño arquitectónico del sistema.
- * Responsable de la recepción de flujos de datos vía HTTP y su delegación al motor de ingestión.
- *
- * Protocolo de operación:
- * 1. Recepción del fichero mediante petición POST multipart en /api/documentos/upload.
- * 2. Validación técnica de formato (PDF, DOCX, TXT).
- * 3. Validación de restricciones de tamaño (límite establecido en 10MB).
- * 4. Invocación del servicio DocumentIngestionService para su procesamiento semántico.
- * 5. Notificación del resultado con el identificador del recurso generado.
+/*
+ Punto de acceso (Endpoint) REST para la gestión y administración de ficheros.
+ Integra el "Módulo de Ingestión" según el diseño arquitectónico del sistema.
+ Responsable de la recepción de flujos de datos vía HTTP y su delegación al motor de ingestión.
+
+ Protocolo de operación:
+ 1. Recepción del fichero mediante petición POST multipart en /api/documentos/upload.
+ 2. Validación técnica de formato (PDF, DOCX, TXT).
+ 3. Validación de restricciones de tamaño (límite establecido en 10MB).
+ 4. Invocación del servicio DocumentIngestionService para su procesamiento semántico.
+ 5. Notificación del resultado con el identificador del recurso generado.
  */
 @Path("/api/documentos")
 @Produces(MediaType.APPLICATION_JSON)
@@ -117,9 +117,9 @@ public class DocumentResource
         }
     }
 
-    /**
-     * Endpoint para la recuperación síncrona del catálogo completo de ficheros.
-     * @return Colección de objetos DocumentoDTO.
+    /*
+     Endpoint para la recuperación síncrona del catálogo completo de ficheros.
+     @return Colección de objetos DocumentoDTO.
      */
     @GET
     public Response listarDocumentos()
@@ -137,10 +137,10 @@ public class DocumentResource
         }
     }
 
-    /**
-     * Endpoint para la consulta detallada de un recurso por su ID.
-     * @param id Identificador único del fichero.
-     * @return DocumentoDTO correspondiente o error 404.
+    /*
+     Endpoint para la consulta detallada de un recurso por su ID.
+     @param id Identificador único del fichero.
+     @return DocumentoDTO correspondiente o error 404.
      */
     @GET
     @Path("/{id}")
@@ -165,10 +165,10 @@ public class DocumentResource
         }
     }
 
-    /**
-     * Endpoint para la eliminación física y lógica de un recurso.
-     * @param id Identificador único del fichero a purgar.
-     * @return Response 204 No Content en éxito o error 404.
+    /*
+     Endpoint para la eliminación física y lógica de un recurso.
+     @param id Identificador único del fichero a purgar.
+     @return Response 204 No Content en éxito o error 404.
      */
     @DELETE
     @Path("/{id}")
@@ -194,8 +194,8 @@ public class DocumentResource
         }
     }
 
-    /**
-     * Clase auxiliar para respuestas de error.
+    /*
+     Clase auxiliar para respuestas de error.
      */
     public record ErrorResponse(String error) {}
 }
