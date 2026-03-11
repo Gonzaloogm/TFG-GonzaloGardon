@@ -799,25 +799,27 @@
                 const response = await fetch(`/api/chats/${id}/historial`);
                 if (!response.ok) throw new Error("No se pudo cargar el historial");
 
-                // Obtenemos los datos (Quarkus puede devolverlo como String o como Objeto)
                 let data = await response.json();
-
-                // Si viene como String serializado, lo parseamos. Si ya es un Array, lo usamos tal cual.
                 let history = typeof data === 'string' ? JSON.parse(data) : data;
 
                 idSesionActual = id;
-                chat.innerHTML = ""; // Limpiar pantalla de mensajes
+                chat.innerHTML = "";
 
-                // Recorrer los mensajes y pintarlos en la UI
                 history.forEach(msg => {
                     if (msg.type === "USER") {
-                        log("Usuario", msg.text, "user");
+                        let textoUsuario = msg.text || (msg.contents && msg.contents.length > 0 ? msg.contents[0].text : "");
+
+                        if (textoUsuario.includes("Answer using the following information:")) {
+                            textoUsuario = textoUsuario.split("Answer using the following information:")[0].trim();
+                        }
+
+                        if (textoUsuario) log("Usuario", textoUsuario, "user");
                     } else if (msg.type === "AI") {
-                        log("Asistente", msg.text, "assistant");
+                        let textoAI = msg.text || "";
+                        if (textoAI) log("Asistente", textoAI, "assistant");
                     }
                 });
 
-                // Reconectar WebSocket al nuevo chat
                 if (socket) socket.close();
                 connectWebSocket(idSesionActual);
 
