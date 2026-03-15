@@ -32,55 +32,42 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
     }
 
     @Override
-    @Transactional
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void updateMessages(Object memoryId, List<ChatMessage> messages) {
         String sessionId = (String) memoryId;
-        String jsonMensajes = ChatMessageSerializer.messagesToJson(messages);
+        ChatSessionEntity entity = ChatSessionEntity.findById(sessionId);
 
-        ChatSessionEntity entidad = ChatSessionEntity.findById(sessionId);
-
-        if (entidad == null) {
-            entidad = new ChatSessionEntity();
-            entidad.sessionId = sessionId;
+        if (entity == null) {
+            entity = new ChatSessionEntity();
+            entity.sessionId = sessionId;
+            entity.titulo = "Sin nombre"; // Título por defecto al abrir la web
         }
 
-        // Lógica de autogeneración de título si no existe
-        if (entidad.titulo == null || entidad.titulo.trim().isEmpty()) {
-            String primerMensajeUsuario = messages.stream()
-                    .filter(m -> m.type() == dev.langchain4j.data.message.ChatMessageType.USER)
-                    .findFirst()
-                    .map(m -> {
-                        if (m instanceof dev.langchain4j.data.message.UserMessage userMessage) {
-                            return userMessage.contents().stream()
-                                    .filter(c -> c.type() == dev.langchain4j.data.message.ContentType.TEXT)
-                                    .map(c -> ((dev.langchain4j.data.message.TextContent) c).text())
-                                    .findFirst()
-                                    .orElse("");
-                        }
-                        return "";
-                    })
-                    .orElse(null);
+        if (("Sin nombre".equals(entity.titulo) || entity.titulo == null) && !messages.isEmpty()) {
+            for (ChatMessage msg : messages) {
+                if (msg.type() == dev.langchain4j.data.message.ChatMessageType.USER) {
 
-            if (primerMensajeUsuario != null && !primerMensajeUsuario.isEmpty()) {
-                String titulo = primerMensajeUsuario.trim();
-                if (titulo.length() > 30) {
-                    titulo = titulo.substring(0, 30) + "...";
+                    String textoUsuario = ((dev.langchain4j.data.message.UserMessage) msg).singleText();
+
+                    if (textoUsuario.contains("Responde utilizando EXCLUSIVAMENTE")) {
+                        textoUsuario = textoUsuario.split("Responde utilizando EXCLUSIVAMENTE")[0].trim();
+                    }
+
+                    entity.titulo = textoUsuario.length() > 25 ? textoUsuario.substring(0, 25) + "..." : textoUsuario;
+                    break;
                 }
-                entidad.titulo = titulo;
-            } else {
-                entidad.titulo = "Sin nombre";
             }
         }
 
-        entidad.messagesJson = jsonMensajes;
-        entidad.updatedAt = LocalDateTime.now();
-        entidad.persist();
+        // Guardamos el JSON y actualizamos la fecha/hora
+        entity.messagesJson = ChatMessageSerializer.messagesToJson(messages);
+        entity.updatedAt = LocalDateTime.now();
+
+        entity.persist();
     }
 
     @Override
-    @Transactional
     public void deleteMessages(Object memoryId) {
-        String sessionId = (String) memoryId;
-        ChatSessionEntity.deleteById(sessionId);
+        System.out.println("Cerrando sesión en memoria (Historial conservado en DB para: " + memoryId + ")");
     }
 }
