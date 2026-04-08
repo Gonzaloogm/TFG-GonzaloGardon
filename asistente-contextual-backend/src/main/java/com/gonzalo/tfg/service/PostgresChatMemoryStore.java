@@ -47,32 +47,31 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
             entity.titulo = "Sin nombre";
         }
 
-        List<ChatMessage> cleanMessages = messages.stream()
-                .map(msg -> {
-                    if (msg instanceof UserMessage userMsg) {
-                        String text = userMsg.singleText();
-                        if (text.contains("Responde utilizando EXCLUSIVAMENTE")) {
-                            // Cortamos el prompt inyectado y nos quedamos solo con la solicitud del usuario
-                            String originalQuery = text.split("Responde utilizando EXCLUSIVAMENTE")[0].trim();
-                            return UserMessage.from(originalQuery);
+        // LIMPIEZA QUIRÚRGICA: Cortamos por el separador de instrucciones
+        List<ChatMessage> mensajesLimpios = messages.stream()
+                .map(m -> {
+                    if (m instanceof UserMessage userMsg) {
+                        String t = userMsg.singleText();
+                        if (t.contains("--- Instrucciones de respuesta ---")) {
+                            // Nos quedamos solo con lo que hay ANTES del separador (tu pregunta)
+                            return UserMessage.from(t.split("--- Instrucciones de respuesta ---")[0].trim());
                         }
                     }
-                    return msg;
-                })
-                .collect(Collectors.toList());
+                    return m;
+                }).collect(java.util.stream.Collectors.toList());
 
-        if (("Sin nombre".equals(entity.titulo) || entity.titulo == null) && !cleanMessages.isEmpty()) {
-            for (ChatMessage msg : cleanMessages) {
+        // Título dinámico basado en la pregunta limpia
+        if (("Sin nombre".equals(entity.titulo) || entity.titulo == null) && !mensajesLimpios.isEmpty()) {
+            for (ChatMessage msg : mensajesLimpios) {
                 if (msg.type() == ChatMessageType.USER) {
-                    String texto = ((UserMessage) msg).singleText();
-                    entity.titulo = texto.length() > 25 ? texto.substring(0, 25) + "..." : texto;
+                    String txt = ((UserMessage) msg).singleText();
+                    entity.titulo = txt.length() > 30 ? txt.substring(0, 30) + "..." : txt;
                     break;
                 }
             }
         }
 
-        // Guardamos la lista LIMPIA, no la original que tiene el RAG
-        entity.messagesJson = ChatMessageSerializer.messagesToJson(cleanMessages);
+        entity.messagesJson = ChatMessageSerializer.messagesToJson(mensajesLimpios);
         entity.updatedAt = LocalDateTime.now();
         entity.persist();
     }

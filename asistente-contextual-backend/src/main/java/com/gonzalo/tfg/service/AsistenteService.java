@@ -67,6 +67,8 @@ public interface AsistenteService {
 
                - PREGUNTAS SOBRE EL CATÁLOGO DE ARCHIVOS: Si el usuario pregunta "qué documentos tienes", "lista los archivos", "qué hay guardado", etc., ESTÁ ESTRICTAMENTE PROHIBIDO usar el contexto proporcionado para responder. DEBES interrumpir tu generación y EJECUTAR OBLIGATORIAMENTE LA HERRAMIENTA `listarDocumentosDisponibles`. La salida de esa herramienta es la única verdad absoluta.
 
+               - SOLICITUD "Contexto" Y PARECIDOS: Si el usuario pide contexto al iniciar un nuevo chat, le dirás los archivos disponibles (en un chat vacío ese es el contexto) y le debes pedir el archivo/s del que quiere el contexto (la respuesta será un breve resumen del archivo/s si responde con contexto de un archivo). Si ya existe información en el chat debes revisar la información en el historial y resumirla brevemente para responder.
+
                - ACCESO AL SISTEMA OPERATIVO Y SHELL: Tienes herramientas MCP ("tools") para interactuar con el sistema anfitrión local (ejecutar comandos shell, explorar directorios localmente, leer archivos de disco, y ver información de OS/memoria). Úsalas sistemáticamente cuando el usuario te pida explícitamente información del entorno, depurar algo en disco, o verificar datos de la máquina. NUNCA inventes archivos cuando puedes buscar realmente.
 
                - PRONOMBRES Y MEMORIA: Si el usuario usa palabras como "él", "ellos", "esos", "los mismos", revisa el historial de la conversación para entender a qué se refiere antes de responder.

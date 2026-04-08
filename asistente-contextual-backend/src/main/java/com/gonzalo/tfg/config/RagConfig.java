@@ -30,8 +30,10 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Configuración avanzada del motor de Generación Aumentada por Recuperación (RAG).
- * Arquitectura Nivel 3: Híbrido (Semántico + Keyword) + RRF + Re-Ranking Manual.
+ * Configuración avanzada del motor de Generación Aumentada por Recuperación
+ * (RAG).
+ * Arquitectura Nivel 3: Híbrido (Semántico + Keyword) + RRF + Re-Ranking
+ * Manual.
  */
 @ApplicationScoped
 public class RagConfig {
@@ -52,49 +54,55 @@ public class RagConfig {
 
         // 1. DEFINICIÓN DEL ENRUTADOR INTELIGENTE
         QueryRouter enrutadorConsultas = query -> {
-            String textoUsuario = query.text().toLowerCase();
-            
-            // Bloqueo de seguridad para evitar bucles de herramientas
-            if (textoUsuario.matches(".*(lista|qué documentos|tienes|inventario|ficheros).*")) {
-                Log.debug("Enrutador: Detectada consulta de catálogo. Vaciando RAG para forzar Tool.");
+            String input = query.text().toLowerCase();
+
+            // Bloqueo de seguridad: Prioridad absoluta a la Tool de Inventario
+            if (input.matches(".*(lista|qué documentos|tienes|inventario|ficheros).*")) {
                 return Collections.emptyList();
             }
 
-            List<DocumentoDTO> documentos = ingestionService.listarDocumentos();
+            List<DocumentoDTO> todosLosDocs = ingestionService.listarDocumentos();
+            List<ContentRetriever> recuperadoresSeleccionados = new ArrayList<>();
 
-            for (DocumentoDTO doc : documentos) {
-                String nombreSinExt = doc.nombre().contains(".")
-                        ? doc.nombre().substring(0, doc.nombre().lastIndexOf('.'))
-                        : doc.nombre();
+            // Identificamos TODOS los documentos mencionados en la consulta
+            for (DocumentoDTO doc : todosLosDocs) {
+                String nombreBase = doc.nombre().toLowerCase().split("_")[0];
+                if (input.contains(nombreBase) || input.contains(doc.nombre().toLowerCase())) {
+                    Log.infof("Enrutador: Coincidencia detectada para [%s]. Añadiendo al flujo.", doc.nombre());
 
-                if (textoUsuario.contains(doc.nombre().toLowerCase())
-                        || textoUsuario.contains(nombreSinExt.toLowerCase())) {
-                    Log.infof("🔍 Enrutador Híbrido: Mención detectada para '%s'. Generando filtros.", doc.nombre());
-
-                    ContentRetriever retrieverSemanticoFiltrado = EmbeddingStoreContentRetriever.builder()
+                    // Filtro específico por metadatos (Aislamiento de contexto)
+                    recuperadoresSeleccionados.add(EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
                             .maxResults(15)
-                            .minScore(0.75)
+                            .minScore(0.65) // Bajamos a 0.65 para ganar riqueza en consultas cortas
                             .filter(MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(doc.nombre()))
-                            .build();
+                            .build());
 
-                    ContentRetriever retrieverKeywordFiltrado = postgresKeywordRetriever.crearRetriever(doc.nombre());
-
-                    return Arrays.asList(retrieverSemanticoFiltrado, retrieverKeywordFiltrado);
+                    // Añadimos el motor de palabras clave para este archivo específico
+                    recuperadoresSeleccionados.add(postgresKeywordRetriever.crearRetriever(doc.nombre()));
                 }
             }
 
-            Log.debug("Enrutador Híbrido: Búsqueda global en ambos motores.");
+            // SI SE DETECTARON ARCHIVOS: Devolvemos solo lo relevante para esos archivos
+            if (!recuperadoresSeleccionados.isEmpty()) {
+                return recuperadoresSeleccionados;
+            }
+
+            // SI NO SE DETECTARON ARCHIVOS (Búsqueda Global):
+            // Estrategia: Si la consulta es muy corta (< 10 caracteres), somos más
+            // permisivos con el score.
+            double umbralDinamico = input.length() < 10 ? 0.60 : 0.70;
+
+            Log.debugf("🔍 Enrutador: Búsqueda global activa. Umbral dinámico: %.2f", umbralDinamico);
             return Arrays.asList(
                     EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
-                            .maxResults(15)
-                            .minScore(0.70)
+                            .maxResults(20) // Más candidatos para que el RRF tenga donde elegir
+                            .minScore(umbralDinamico)
                             .build(),
-                    postgresKeywordRetriever.crearRetriever(null)
-            );
+                    postgresKeywordRetriever.crearRetriever(null));
         };
 
         // 2. SCORING MODEL PARA RE-RANKING (Similitud Coseno)
@@ -150,7 +158,8 @@ public class RagConfig {
                     .map(e -> contentMap.get(e.getKey()))
                     .collect(Collectors.toList());
 
-            if (candidatosRRF.isEmpty()) return candidatosRRF;
+            if (candidatosRRF.isEmpty())
+                return candidatosRRF;
 
             try {
                 Log.debug("RE-RANKER: Aplicando Scoring Model sobre candidatos RRF.");
@@ -170,9 +179,12 @@ public class RagConfig {
                 String qLower = qText.toLowerCase();
                 return reranked.stream()
                         .filter(e -> {
-                            String fuente = e.getKey().textSegment().metadata().getString("nombre_archivo").toLowerCase();
-                            if (qLower.contains("anteproyecto") && !fuente.contains("anteproyecto")) return false;
-                            if (qLower.contains("normas") && !fuente.contains("normas")) return false;
+                            String fuente = e.getKey().textSegment().metadata().getString("nombre_archivo")
+                                    .toLowerCase();
+                            if (qLower.contains("anteproyecto") && !fuente.contains("anteproyecto"))
+                                return false;
+                            if (qLower.contains("normas") && !fuente.contains("normas"))
+                                return false;
                             return true;
                         })
                         .sorted((e1, e2) -> Double.compare(e2.getValue(), e1.getValue()))
@@ -189,7 +201,10 @@ public class RagConfig {
         // 4. INYECTOR DE CONTENIDO
         DefaultContentInjector inyectorContenido = DefaultContentInjector.builder()
                 .metadataKeysToInclude(Arrays.asList("nombre_archivo", "entidades"))
-                .promptTemplate(PromptTemplate.from("Responde EXCLUSIVAMENTE con esta información:\n\n{{contents}}"))
+                .promptTemplate(PromptTemplate.from(
+                        "{{userMessage}}\n\n" +
+                                "--- Instrucciones de respuesta ---\n" +
+                                "Responde EXCLUSIVAMENTE con la información del catálogo inyectada a continuación:\n\n{{contents}}"))
                 .build();
 
         return DefaultRetrievalAugmentor.builder()
