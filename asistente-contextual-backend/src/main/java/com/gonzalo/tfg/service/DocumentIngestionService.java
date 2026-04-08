@@ -22,11 +22,16 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.io.File;
-
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /*
  Servicio de Ingestión de Ficheros - Implementación de operaciones CRUD.
@@ -58,6 +63,9 @@ public class DocumentIngestionService {
     // Configuración de la fragmentación según las especificaciones del TFG
     private static final int TAMANIO_FRAGMENTO = 300; // tokens
     private static final int SOLAPAMIENTO_FRAGMENTO = 30; // tokens
+
+    @Inject
+    MetadataExtractor metadataExtractor;
 
     // Fichero de persistencia para el catálogo de la base de conocimiento
     private static final String FICHERO_CATALOGO = "documents_catalog.json";
@@ -126,7 +134,39 @@ public class DocumentIngestionService {
                     rutaFichero,
                     crearAnalizador(nombreOriginal));
 
-            // Inyección de metadatos en el objeto de dominio de LangChain4j
+            // --- EXTRACCIÓN PASIVA DE METADATOS (Graph-Lite) ---
+            // Extrae tecnologías clave y fechas de forma rápida y estática sin alterar el formato principal de la respuesta.
+            String contenidoLower = documento.text().toLowerCase();
+            
+            List<String> tecnologiasEncontradas = new ArrayList<>();
+            String[] techStack = {"java", "quarkus", "postgres", "pgvector", "langchain4j", "docker", "kubernetes", "react", "spring boot", "python", "javascript", "typescript"};
+            for (String tech : techStack) {
+                if (contenidoLower.contains(tech)) {
+                    tecnologiasEncontradas.add(tech);
+                }
+            }
+            
+            List<String> fechasEncontradas = new ArrayList<>();
+            Matcher m = Pattern.compile("\\b(\\d{2}[-/]\\d{2}[-/]\\d{4}|\\d{4})\\b").matcher(contenidoLower);
+            while (m.find() && fechasEncontradas.size() < 5) { // Limitado a 5 coincidencias máximo
+                if (!fechasEncontradas.contains(m.group())) {
+                    fechasEncontradas.add(m.group());
+                }
+            }
+
+            if (!tecnologiasEncontradas.isEmpty()) {
+                String techs = String.join(", ", tecnologiasEncontradas);
+                documento.metadata().put("tecnologias", techs);
+                metadatos.put("tecnologias", techs);
+            }
+            if (!fechasEncontradas.isEmpty()) {
+                String dates = String.join(", ", fechasEncontradas);
+                documento.metadata().put("fechas", dates);
+                metadatos.put("fechas", dates);
+            }
+            Log.infof("Extracción Pasiva - Entidades inyectadas en metadata. Tecnologías: %d | Fechas: %d", tecnologiasEncontradas.size(), fechasEncontradas.size());
+
+            // Inyección de metadatos general (asegurando que nombre_archivo se preserve prioritario)
             documento.metadata().put("documento_id", idDocumento);
             documento.metadata().put("nombre_archivo", nombreOriginal);
             metadatos.forEach((clave, valor) -> documento.metadata().put(clave, valor));
@@ -137,10 +177,24 @@ public class DocumentIngestionService {
                     SOLAPAMIENTO_FRAGMENTO);
             List<TextSegment> segmentos = fragmentador.split(documento);
 
-            Log.infof("Contenido fragmentado en %d segmentos", segmentos.size());
+            Log.infof("Contenido fragmentado en %d segmentos. Iniciando enriquecimiento con LLM...", segmentos.size());
+
+            // --- INGESTION ENRICHMENT ---
+            List<TextSegment> segmentosEnriquecidos = new ArrayList<>();
+            for (TextSegment seg : segmentos) {
+                try {
+                    String entidades = metadataExtractor.extraerEntidades(seg.text());
+                    dev.langchain4j.data.document.Metadata meta = seg.metadata().copy();
+                    meta.put("entidades", entidades);
+                    segmentosEnriquecidos.add(TextSegment.from(seg.text(), meta));
+                } catch (Exception e) {
+                    Log.warn("Fallo al extraer entidades para un fragmento, omitiendo...", e);
+                    segmentosEnriquecidos.add(seg);
+                }
+            }
 
             // 4. Transformación a vectores y almacenamiento en BD vectorial
-            almacenarSegmentos(segmentos);
+            almacenarSegmentos(segmentosEnriquecidos);
 
             // 5. Instanciación del DTO de respuesta
             DocumentoDTO documentoDTO = new DocumentoDTO(

@@ -4,6 +4,7 @@ import com.gonzalo.tfg.tools.DocumentSystemTool;
 import com.gonzalo.tfg.tools.SystemActionsTool;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
+import dev.langchain4j.service.MemoryId;
 import io.quarkiverse.langchain4j.RegisterAiService;
 
 /*
@@ -62,7 +63,7 @@ public interface AsistenteService {
                  b) Pregunta OBLIGATORIAMENTE: "He detectado varios documentos cargados. ¿Sobre cuál de ellos necesitas contexto/resumen?".
                  c) NO resumas el contexto inyectado bajo ninguna circunstancia hasta que el usuario aclare el nombre del archivo.
 
-               - FLEXIBILIDAD EN NOMBRES DE ARCHIVO: Si el usuario menciona un nombre de archivo parcial, aproximado o incompleto (ej. "anteproyecto" en lugar de "AnteproyectoB_GonzaloGardon.pdf"), COMPARA inteligentemente con tu lista de documentos. Si la coincidencia es obvia, asume el documento correcto y RESPONDE DIRECTAMENTE sin pedir confirmación.
+               - FLEXIBILIDAD EN NOMBRES DE ARCHIVO: Si el usuario menciona un nombre de archivo parcial, aproximado o incompleto (ej. "anteproyecto" en lugar de "AnteproyectoB_GonzaloGardon.pdf"), COMPARA inteligentemente con tu lista de documentos, puede que cambien letras de mayúscula a minúscula o viceversa y otros cambios similares. Si la coincidencia es obvia, asume el documento correcto y RESPONDE DIRECTAMENTE sin pedir confirmación.
 
                - PREGUNTAS SOBRE EL CATÁLOGO DE ARCHIVOS: Si el usuario pregunta "qué documentos tienes", "lista los archivos", "qué hay guardado", etc., ESTÁ ESTRICTAMENTE PROHIBIDO usar el contexto proporcionado para responder. DEBES interrumpir tu generación y EJECUTAR OBLIGATORIAMENTE LA HERRAMIENTA `listarDocumentosDisponibles`. La salida de esa herramienta es la única verdad absoluta.
 
@@ -123,5 +124,5 @@ public interface AsistenteService {
          Siempre indica tus fuentes y admite cuando la información es incompleta.
          """)
    @UserMessage("{{userMessage}}")
-   String chat(@dev.langchain4j.service.MemoryId String sessionId, String userMessage);
+   String chat(@MemoryId String sessionId, String userMessage);
 }
