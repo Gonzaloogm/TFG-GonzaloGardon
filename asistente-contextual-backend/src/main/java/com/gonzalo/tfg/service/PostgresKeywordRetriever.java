@@ -28,10 +28,10 @@ public class PostgresKeywordRetriever {
     @Inject
     ObjectMapper objectMapper;
 
-    public ContentRetriever crearRetriever(String archivoFiltro) {
+    public ContentRetriever crearRetriever(String archivoFiltro, String customSearchTerm) {
         return query -> {
             try {
-                String searchTerm = query.text();
+                String searchTerm = (customSearchTerm != null) ? customSearchTerm : query.text();
                 List<Content> contents = new ArrayList<>();
 
                 String sql = "SELECT text, metadata FROM embeddings " +

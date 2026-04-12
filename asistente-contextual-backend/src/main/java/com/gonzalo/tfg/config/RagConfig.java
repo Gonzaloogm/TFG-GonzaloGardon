@@ -54,55 +54,82 @@ public class RagConfig {
 
         // 1. DEFINICIÓN DEL ENRUTADOR INTELIGENTE
         QueryRouter enrutadorConsultas = query -> {
-            String input = query.text().toLowerCase();
+            // 1. Normalización inicial
+            String inputOriginal = query.text();
+            String input = inputOriginal.toLowerCase().trim();
 
             // Bloqueo de seguridad: Prioridad absoluta a la Tool de Inventario
-            if (input.matches(".*(lista|qué documentos|tienes|inventario|ficheros).*")) {
+            if (input.matches(".*(lista|qué documentos|tienes|inventario|ficheros|catálogo|archivos).*")) {
+                Log.debug("Enrutador: Detectada consulta de catálogo. Delegando en Tool.");
                 return Collections.emptyList();
             }
 
+            // 2. Extracción de Keywords "Limpia" (ELIMINACIÓN DE RUIDO)
+            // Primero quitamos puntuación, si no "¿qué" cuenta como palabra de 4 letras
+            String inputSinPuntuacion = input.replaceAll("[\\p{Punct}¿¡]", " ");
+
+            String queryParaKeywords = Arrays.stream(inputSinPuntuacion.split("\\s+"))
+                    .filter(word -> word.length() > 3) // Filtro de longitud
+                    .filter(word -> !word.matches(
+                            "(?i)(dime|este|estos|sobre|todos|investigación|específicas|mencionan|documentos|puedes|hacer|está|para|donde|cuál|cuáles|quién|cómo|algún|algunos)"))
+                    .collect(Collectors.joining(" "))
+                    .trim();
+
+            // Fail-safe: si la limpieza lo deja vacío, usamos el input original sin
+            // puntuación
+            if (queryParaKeywords.isEmpty()) {
+                queryParaKeywords = inputSinPuntuacion.trim();
+            }
+
+            Log.infof("Query optimizada para Keywords: '%s'", queryParaKeywords);
+
+            // 3. Enrutamiento Dinámico
             List<DocumentoDTO> todosLosDocs = ingestionService.listarDocumentos();
             List<ContentRetriever> recuperadoresSeleccionados = new ArrayList<>();
 
-            // Identificamos TODOS los documentos mencionados en la consulta
             for (DocumentoDTO doc : todosLosDocs) {
-                String nombreBase = doc.nombre().toLowerCase().split("_")[0];
-                if (input.contains(nombreBase) || input.contains(doc.nombre().toLowerCase())) {
-                    Log.infof("Enrutador: Coincidencia detectada para [%s]. Añadiendo al flujo.", doc.nombre());
+                String nombreArchivo = doc.nombre().toLowerCase();
+                // Quitamos la extensión para comparar el nombre base
+                String nombreBase = nombreArchivo.contains(".")
+                        ? nombreArchivo.substring(0, nombreArchivo.lastIndexOf('.'))
+                        : nombreArchivo;
 
-                    // Filtro específico por metadatos (Aislamiento de contexto)
+                // Detección robusta: nombre completo, nombre base o partes significativas
+                if (input.contains(nombreArchivo) || input.contains(nombreBase)) {
+                    Log.infof("Enrutador: Coincidencia detectada para [%s]", doc.nombre());
+
+                    // Recuperador Semántico (Vectorial) filtrado por este archivo
                     recuperadoresSeleccionados.add(EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
-                            .maxResults(15)
-                            .minScore(0.65) // Bajamos a 0.65 para ganar riqueza en consultas cortas
+                            .maxResults(10)
+                            .minScore(0.60) // Un poco más permisivo para no perder contexto útil
                             .filter(MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(doc.nombre()))
                             .build());
 
-                    // Añadimos el motor de palabras clave para este archivo específico
-                    recuperadoresSeleccionados.add(postgresKeywordRetriever.crearRetriever(doc.nombre()));
+                    // Recuperador de Palabras Clave (Full-Text Search) para este archivo
+                    recuperadoresSeleccionados
+                            .add(postgresKeywordRetriever.crearRetriever(doc.nombre(), queryParaKeywords));
                 }
             }
 
-            // SI SE DETECTARON ARCHIVOS: Devolvemos solo lo relevante para esos archivos
+            // 4. Salida de resultados
             if (!recuperadoresSeleccionados.isEmpty()) {
                 return recuperadoresSeleccionados;
             }
 
-            // SI NO SE DETECTARON ARCHIVOS (Búsqueda Global):
-            // Estrategia: Si la consulta es muy corta (< 10 caracteres), somos más
-            // permisivos con el score.
-            double umbralDinamico = input.length() < 10 ? 0.60 : 0.70;
+            // BÚSQUEDA GLOBAL (Si no se mencionó ningún archivo específico)
+            double umbralDinamico = input.length() < 15 ? 0.60 : 0.70;
+            Log.debugf("Búsqueda global activa. Umbral: %.2f", umbralDinamico);
 
-            Log.debugf("🔍 Enrutador: Búsqueda global activa. Umbral dinámico: %.2f", umbralDinamico);
             return Arrays.asList(
                     EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
-                            .maxResults(20) // Más candidatos para que el RRF tenga donde elegir
+                            .maxResults(20)
                             .minScore(umbralDinamico)
                             .build(),
-                    postgresKeywordRetriever.crearRetriever(null));
+                    postgresKeywordRetriever.crearRetriever(null, queryParaKeywords));
         };
 
         // 2. SCORING MODEL PARA RE-RANKING (Similitud Coseno)
@@ -203,8 +230,8 @@ public class RagConfig {
                 .metadataKeysToInclude(Arrays.asList("nombre_archivo", "entidades"))
                 .promptTemplate(PromptTemplate.from(
                         "{{userMessage}}\n\n" +
-                                "--- Instrucciones de respuesta ---\n" +
-                                "Responde EXCLUSIVAMENTE con la información del catálogo inyectada a continuación:\n\n{{contents}}"))
+                                "--- Contexto de Documentos ---\n" +
+                                "{{contents}}"))
                 .build();
 
         return DefaultRetrievalAugmentor.builder()

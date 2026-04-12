@@ -796,36 +796,51 @@
 
         async function cargarHistorialChat(id) {
             try {
-                const response = await fetch(`/api/chats/${id}/historial`);
-                if (!response.ok) throw new Error("No se pudo cargar el historial");
-
-                let data = await response.json();
-                let history = typeof data === 'string' ? JSON.parse(data) : data;
+                const res = await fetch(`/api/chats/${id}/historial`);
+                const history = await res.json();
 
                 idSesionActual = id;
-                chat.innerHTML = "";
+                const chatDiv = document.getElementById("chat");
+                chatDiv.innerHTML = "";
 
                 history.forEach(msg => {
+                    if (msg.type === "SYSTEM") return;
+
+                    let texto = msg.text || (msg.contents && msg.contents[0] ? msg.contents[0].text : "");
+                    if (!texto || texto === "null") return;
+
                     if (msg.type === "USER") {
-                        let textoUsuario = msg.text || (msg.contents && msg.contents.length > 0 ? msg.contents[0].text : "");
+                        // TIJERA MULTIPLE: Cortamos por cualquier posible inicio de RAG
+                        const delimitadores = [
+                            "Utiliza los fragmentos",
+                            "--- Instrucciones",
+                            "Responde EXCLUSIVAMENTE",
+                            "content:",
+                            "\n\nContexto:"
+                        ];
 
-                        if (textoUsuario.includes("Answer using the following information:")) {
-                            textoUsuario = textoUsuario.split("Answer using the following information:")[0].trim();
+                        delimitadores.forEach(d => {
+                            if (texto.includes(d)) {
+                                texto = texto.split(d)[0].trim();
+                            }
+                        });
+
+                        log("Usuario", texto, "user");
+                    } else {
+                        // Si la respuesta de la IA es un pensamiento técnico
+                        if (texto.includes("<thinking>")) {
+                            texto = texto.split("</thinking>")[1] || "Procesando...";
                         }
-
-                        if (textoUsuario) log("Usuario", textoUsuario, "user");
-                    } else if (msg.type === "AI") {
-                        let textoAI = msg.text || "";
-                        if (textoAI) log("Asistente", textoAI, "assistant");
+                        log("Asistente", texto, "assistant");
                     }
                 });
 
                 if (socket) socket.close();
-                connectWebSocket(idSesionActual);
-
+                connectWebSocket(id); // Corregido: connectWebSocket en lugar de conectarWebSocket
+                
                 log("Sistema", "Historial de conversación recuperado.", "system");
-            } catch (error) {
-                console.error("Error en cargarHistorialChat:", error);
+            } catch (e) {
+                console.error(e);
                 log("Sistema", "Error al recuperar el historial.", "error");
             }
         }

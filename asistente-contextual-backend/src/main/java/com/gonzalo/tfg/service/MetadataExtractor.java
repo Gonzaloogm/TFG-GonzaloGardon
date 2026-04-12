@@ -6,8 +6,19 @@ import dev.langchain4j.service.SystemMessage;
 
 @RegisterAiService
 public interface MetadataExtractor {
-    
-    @SystemMessage("Eres un analista de datos experto en extraer entidades de texto.")
-    @UserMessage("Extrae de este fragmento las 3 entidades clave (tecnologías, personas, fechas) y devuélvelas como una lista separada por comas:\n\n{text}")
+
+    @SystemMessage("""
+            Eres un especialista en indexación de datos de mercado.
+            Tu única función es recibir un texto y devolver metadatos puros.
+            No converses. No busques en internet. Solo extrae.
+            """)
+    @UserMessage("""
+            Analiza este fragmento y extrae exclusivamente estos 3 campos separados por pipe (|):
+            ENTIDADES: (Empresas, Tecnologías o Personas clave)
+            CATEGORIA: (Tendencia, Competencia o Normativa)
+            RESUMEN: (Máximo 10 palabras)
+
+            Fragmento: {text}
+            """)
     String extraerEntidades(String text);
 }
