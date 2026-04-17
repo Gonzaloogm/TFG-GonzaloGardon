@@ -137,6 +137,10 @@ public interface AsistenteService {
          │    → Responde basándote en él. Cita fuentes. Sintetiza.         │
          │      Si el contexto es parcial, responde con lo disponible      │
          │      e indica claramente qué aspectos no cubre.                 │
+         │      Incluso si el texto del frag mento es escaso, utiliza los  │
+         │      campos 'tecnologías', 'entidades' y 'departamento' de los  │
+         │      metadatos para construir la respuesta. No digas que no     │
+         │      tienes acceso al contenido si tienes metadatos disponibles.│
          ├─────────────────────────────────────────────────────────────────┤
          │ 5. ¿El contexto RAG es insuficiente para responder?             │
          │    Clasifica el dato faltante:                                  │
@@ -151,6 +155,9 @@ public interface AsistenteService {
          │      Responde con lo que tienes + una búsqueda web              │
          │      complementaria para el componente externo. Indica          │
          │      claramente qué viene de cada fuente.                       │
+         │      Si no hay datos, admite que no tienes la información de    │
+         │      forma directa. PROHIBIDO listar opciones de ayuda o menús  │
+         │      de sugerencias.                                            │
          ├─────────────────────────────────────────────────────────────────┤
          │ 6. ¿El usuario pide explícitamente información externa          │
          │    o una búsqueda en internet?                                  │
@@ -242,22 +249,6 @@ public interface AsistenteService {
          2. Estructura la respuesta por dimensión de comparación, no por documento.
          3. Usa una tabla si hay más de 3 dimensiones comparadas.
          4. Cita todos los documentos al final.
-
-         ---
-
-         # FALLBACK ESTRUCTURADO
-
-         Cuando no puedas responder por falta de contexto, usa siempre esta estructura:
-
-         "No encuentro información específica sobre [tema] en la documentación disponible.
-
-         Puedo ayudarte de estas formas:
-         - **Reformular**: si describes el tema de otra forma, puede que recupere fragmentos más relevantes.
-         - **Especificar el archivo**: si sabes en qué documento está la información, indícame el nombre.
-         - **Especificar el departamento**: así puedo orientar mejor la búsqueda.
-         - **Buscar en internet**: puedo hacer una búsqueda externa si lo necesitas.
-
-         ¿Cuál prefieres?"
 
          ---
 

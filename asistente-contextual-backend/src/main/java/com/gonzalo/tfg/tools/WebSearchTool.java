@@ -15,31 +15,33 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class WebSearchTool {
 
-    @Tool("Busca en internet información actualizada (noticias, precios, cuotas de mercado de 2026).")
+    @Tool("Busca en internet información actualizada (noticias, precios, tendencias de 2026).")
     public String buscarEnWebGratis(String query) {
-        Log.infof("🌐 Buscando: %s", query);
+        Log.infof("Investigando en la red: %s", query);
         try {
-            // Usamos una URL de búsqueda más directa
-            String url = "https://html.duckduckgo.com/html/?q=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
+            String url = "https://html.duckduckgo.com/html/?q=" + URLEncoder.encode(query, "UTF-8") + "&kl=es-es";
 
             Document doc = Jsoup.connect(url)
                     .userAgent(
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-                    .timeout(10000)
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                    .header("Accept-Language", "es-ES,es;q=0.9")
+                    .timeout(15000)
                     .get();
 
-            // DuckDuckGo HTML usa la clase .result__snippet para los resúmenes
-            Elements snippets = doc.select(".result__snippet");
-            if (snippets.isEmpty())
-                return "No se han encontrado resultados públicos hoy.";
+            Elements results = doc.select(".result__snippet, .snippet, .web-result__snippet, .links_main");
 
-            return snippets.stream()
-                    .limit(3) // Solo los 3 mejores para no saturar
+            if (results.isEmpty()) {
+                results = doc.select("a.result__a");
+            }
+
+            return results.stream()
+                    .limit(4)
                     .map(Element::text)
+                    .filter(text -> text.length() > 20)
                     .collect(Collectors.joining("\n\n---\n\n"));
 
         } catch (Exception e) {
-            return "Error en la conexión con el buscador: " + e.getMessage();
+            return "Error técnico en la búsqueda: " + e.getMessage();
         }
     }
 }
