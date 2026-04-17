@@ -171,7 +171,7 @@ public class RagConfig {
                     for (Content contenido : resultados) {
                         String id = contenido.textSegment().text();
                         double rrfScore = 1.0 / (smoothingConstant + rank);
-                        contentScores.merge(id, rrfScore, Double::sum);
+                        contentScores.merge(id, rrfScore, (v1, v2) -> Double.sum(v1, v2));
                         contentMap.putIfAbsent(id, contenido);
                         rank++;
                     }

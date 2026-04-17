@@ -577,21 +577,87 @@
             }
         }
 
-        /* Estilo de Modal "Gemini Dark" */
+        /* FONDO DEL MODAL: Blanco y con sombras suaves */
         .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 9999;
+            background: rgba(0, 0, 0, 0.4) !important;
+            backdrop-filter: blur(2px);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
         }
+
         .modal-content {
-            background: #1e1e1e; color: #e3e3e3; padding: 24px; border-radius: 20px;
-            max-width: 400px; width: 90%; font-family: sans-serif;
+            background: #ffffff !important;
+            color: #333333 !important;
+            border-radius: 12px !important;
+            padding: 30px !important;
+            border: 1px solid #e0e0e0 !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+            max-width: 400px !important;
+            width: 90%;
+            font-family: sans-serif;
         }
-        .modal-content h2 { margin-top: 0; font-size: 1.5rem; font-weight: 400; }
-        .modal-content p { color: #c4c7c5; line-height: 1.5; margin: 20px 0; }
-        .modal-buttons { display: flex; justify-content: flex-end; gap: 20px; margin-top: 10px; }
-        .btn-text { background: none; border: none; color: #a8c7fa; cursor: pointer; font-size: 14px; font-weight: 500; }
-        .btn-danger { background: none; border: none; color: #a8c7fa; cursor: pointer; font-size: 14px; font-weight: 500; }
-        .btn-danger:hover, .btn-text:hover { opacity: 0.8; }
+
+        /* TÍTULO Y TEXTO */
+        .modal-content h2 {
+            color: #10a37f !important;
+            /* Mismo verde que el botón Nuevo Chat */
+            font-size: 1.4rem !important;
+            margin-bottom: 12px !important;
+            font-weight: 600 !important;
+            margin-top: 0;
+        }
+
+        .modal-content p {
+            color: #5f6368 !important;
+            font-size: 0.95rem !important;
+            line-height: 1.5 !important;
+        }
+
+        /* BOTONES: Sincronizados con la paleta de colores actual */
+        .modal-buttons {
+            margin-top: 25px !important;
+            display: flex !important;
+            justify-content: flex-end !important;
+            gap: 12px !important;
+        }
+
+        .btn-cancel {
+            background: #f1f3f4 !important;
+            color: #3c4043 !important;
+            border: none !important;
+            padding: 10px 20px !important;
+            border-radius: 8px !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+            font-size: 14px;
+        }
+
+        .btn-confirm {
+            background: #10a37f !important;
+            /* VERDE CORPORATIVO */
+            color: #ffffff !important;
+            border: none !important;
+            padding: 10px 20px !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            cursor: pointer !important;
+            font-size: 14px;
+        }
+
+        .btn-confirm:hover {
+            background: #10a37f !important;
+        }
+
+        .btn-cancel:hover {
+            background: #e8eaed !important;
+        }
     </style>
 </head>
 
@@ -711,8 +777,8 @@
             <h2 id="modal-title"></h2>
             <p id="modal-description"></p>
             <div class="modal-buttons">
-                <button id="modal-cancel" class="btn-text">Cancelar</button>
-                <button id="modal-confirm" class="btn-danger">Eliminar</button>
+                <button id="modal-cancel" class="btn-cancel">Cancelar</button>
+                <button id="modal-confirm" class="btn-confirm">Eliminar</button>
             </div>
         </div>
     </div>
@@ -722,9 +788,9 @@
         let idSesionActual;
 
         // ========== Lógica de Utilidades ==========
-        function limpiarMensaje(texto) {
+        function limpiarRespuesta(texto) {
             if (!texto) return "";
-            return texto.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+            return texto.replace(/<thinking>[\s\S]*?<\/thinking>/g, "").trim();
         }
 
         function confirmarAccion(titulo, desc, callback) {
@@ -899,14 +965,14 @@
                         log("Usuario", texto, "user");
                     } else {
                         // Si la respuesta de la IA es un pensamiento técnico
-                        texto = limpiarMensaje(texto);
+                        texto = limpiarRespuesta(texto);
                         log("Asistente", texto || "Procesando...", "assistant");
                     }
                 });
 
                 if (socket) socket.close();
                 connectWebSocket(id); // Corregido: connectWebSocket en lugar de conectarWebSocket
-                
+
                 log("Sistema", "Historial de conversación recuperado.", "system");
             } catch (e) {
                 console.error(e);
@@ -940,7 +1006,7 @@
 
             socket.onmessage = function (event) {
                 hideTyping();
-                let textoLimpio = limpiarMensaje(event.data);
+                let textoLimpio = limpiarRespuesta(event.data);
                 log("Asistente", textoLimpio || "Procesando...", "assistant");
                 // Recargar lista lateral para ver la fecha actualizada si es un chat nuevo
                 cargarListaChats();
