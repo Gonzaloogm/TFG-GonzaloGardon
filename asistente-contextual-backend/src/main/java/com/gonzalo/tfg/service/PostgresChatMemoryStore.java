@@ -76,7 +76,14 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
     }
 
     @Override
+    @Transactional
     public void deleteMessages(Object memoryId) {
-        // La sesión se cierra en memoria, pero la DB mantiene el historial.
+        String sessionId = (String) memoryId;
+        // Elimina la fila de persistencia para que LangChain4j no rehidrate
+        // una sesión que ya fue borrada vía ChatResource/ChatService.
+        boolean eliminado = ChatSessionEntity.deleteById(sessionId);
+        if (eliminado) {
+            io.quarkus.logging.Log.infof("PostgresChatMemoryStore: mensajes de sesión '%s' eliminados.", sessionId);
+        }
     }
 }

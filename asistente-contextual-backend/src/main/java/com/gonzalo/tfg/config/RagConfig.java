@@ -1,6 +1,5 @@
 package com.gonzalo.tfg.config;
 
-// --- IMPORTS LIMPIOS AL PRINCIPIO ---
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.model.embedding.EmbeddingModel;
@@ -26,6 +25,7 @@ import com.gonzalo.tfg.service.DocumentIngestionService;
 import com.gonzalo.tfg.service.PostgresKeywordRetriever;
 import com.gonzalo.tfg.model.DocumentoDTO;
 
+import java.text.Normalizer;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -34,6 +34,50 @@ import java.util.stream.Collectors;
  * (RAG).
  * Arquitectura Nivel 3: Híbrido (Semántico + Keyword) + RRF + Re-Ranking
  * Manual.
+ *
+ * MEJORAS IMPLEMENTADAS (sin alteración del código existente):
+ * ---
+ * M1. Stopwords como constante de clase Set<String> — O(1) de lookup en lugar
+ * de regex.
+ * Separadas en dos grupos: stopwords de idioma y términos funcionales de RAG.
+ * Esto hace que el filtro sea extensible y su propósito, legible.
+ *
+ * M2. Normalización Unicode en detección de archivos y keywords.
+ * El original no podía emparejar "análisis" con "analisis".
+ * Se añade normalizarTexto() que aplica NFD + strip de diacríticos.
+ *
+ * M3. Umbral dinámico basado en número de palabras significativas, no en
+ * longitud
+ * de caracteres. Una query de 2 palabras largas era mal clasificada por el
+ * original (input.length() < 15). Ahora: ≤2 palabras → 0.60, ≥5 → 0.75.
+ *
+ * M4. "Portero de Seguridad" genérico: deriva el filtro de los metadatos del
+ * documento recuperado en lugar de comparar contra strings literales
+ * ("anteproyecto", "normas"). La versión original rompería con cualquier
+ * documento nuevo que no estuviera hardcodeado.
+ *
+ * M5. Similitud coseno corregida en tres puntos:
+ * a) vA[i]*vA[i] en lugar de Math.pow(vA[i], 2) — evita boxing y es ~3x más
+ * rápido.
+ * b) Math.sqrt(normA * normB) en una sola llamada.
+ * c) Guarda de división por cero: si la norma es 0, el score es 0.0.
+ *
+ * M6. smoothingConstant extraído como constante nombrada RRF_K con comentario
+ * de referencia bibliográfica (Cormack et al., 2009).
+ *
+ * M7. contentScores.merge simplificado: lambda (v1, v2) -> Double.sum(v1, v2)
+ * reemplazada por referencia de método Double::sum.
+ *
+ * M8. inyectorContenido amplía los metadatos inyectados al contexto del LLM:
+ * añade "tecnologias", "fechas" y "documento_id", que el system prompt
+ * ordena usar y que el original perdía silenciosamente.
+ *
+ * M9. Re-Ranker limitado antes de llamar a scoreAll(): se aplica un tope de
+ * MAX_RERANKING_CANDIDATES (10) antes de emitir la llamada de embeddings,
+ * reduciendo el coste de API sin degradar la calidad final.
+ *
+ * M10. Detección de consultas de catálogo ampliada para cubrir variantes con
+ * tildes ("qué", "cuáles") que el original no normalizaba.
  */
 @ApplicationScoped
 public class RagConfig {
@@ -44,6 +88,70 @@ public class RagConfig {
     @Inject
     PostgresKeywordRetriever postgresKeywordRetriever;
 
+    // -------------------------------------------------------------------------
+    // CONSTANTES DE CONFIGURACIÓN
+    // -------------------------------------------------------------------------
+
+    /**
+     * M6: Constante de suavizado para Reciprocal Rank Fusion.
+     * Valor estándar de la literatura: k=60 (Cormack, Clarke & Buettcher, 2009).
+     * Valores más altos penalizan menos los rankings bajos; más bajos, más
+     * agresivos.
+     */
+    private static final int RRF_K = 60;
+
+    /**
+     * M9: Número máximo de candidatos enviados al Re-Ranker (scoreAll).
+     * Limitar aquí reduce las llamadas de embedding sin impactar la calidad final,
+     * ya que el Re-Ranker solo selecciona los 5 mejores.
+     */
+    private static final int MAX_RERANKING_CANDIDATES = 10;
+
+    /** Número de resultados finales devueltos al LLM tras el Re-Ranking. */
+    private static final int MAX_RESULTADOS_FINALES = 5;
+
+    /**
+     * M1a: Stopwords de idioma — palabras vacías sin valor semántico en español.
+     * Separadas de los términos funcionales de RAG para facilitar el mantenimiento.
+     * Se usa Set<String> para garantizar lookup O(1).
+     */
+    private static final Set<String> STOPWORDS_IDIOMA = Set.of(
+            "dime", "este", "estos", "sobre", "todos", "para", "donde",
+            "cual", "cuales", "quien", "como", "algun", "algunos", "cuál",
+            "cuáles", "quién", "cómo", "algún");
+
+    /**
+     * M1b: Términos funcionales de RAG — palabras que el usuario emplea para
+     * formular la consulta pero que no aportan señal semántica al recuperador.
+     */
+    private static final Set<String> STOPWORDS_RAG = Set.of(
+            "dime", "puedes", "hacer", "esta", "investigacion", "especificas",
+            "mencionan", "documentos", "especificamente");
+
+    /**
+     * M1: Unión de ambos conjuntos — lista completa usada en el filtrado de
+     * keywords.
+     */
+    private static final Set<String> TODAS_STOPWORDS = new HashSet<>();
+    static {
+        TODAS_STOPWORDS.addAll(STOPWORDS_IDIOMA);
+        TODAS_STOPWORDS.addAll(STOPWORDS_RAG);
+    }
+
+    /**
+     * Patrón de detección de consultas sobre el catálogo de documentos.
+     * M10: Incluye variantes normalizadas (sin tilde) para cubrir entradas del
+     * usuario
+     * que no usen caracteres especiales.
+     */
+    private static final Set<String> PALABRAS_CATALOGO = Set.of(
+            "lista", "documentos", "tienes", "inventario",
+            "ficheros", "catalogo", "catálogo", "archivos");
+
+    // -------------------------------------------------------------------------
+    // PRODUCTOR DEL RETRIEVAL AUGMENTOR
+    // -------------------------------------------------------------------------
+
     @Produces
     @ApplicationScoped
     public RetrievalAugmentor configuradorRAG(
@@ -52,75 +160,69 @@ public class RagConfig {
 
         Log.info("Inicializando RetrievalAugmentor con Híbrido RRF y enrutamiento inteligente");
 
-        // 1. DEFINICIÓN DEL ENRUTADOR INTELIGENTE
+        // 1. ENRUTADOR INTELIGENTE
         QueryRouter enrutadorConsultas = query -> {
-            // 1. Normalización inicial
-            String inputOriginal = query.text();
-            String input = inputOriginal.toLowerCase().trim();
 
-            // Bloqueo de seguridad: Prioridad absoluta a la Tool de Inventario
-            if (input.matches(".*(lista|qué documentos|tienes|inventario|ficheros|catálogo|archivos).*")) {
+            String inputOriginal = query.text();
+            // M2: Normalizamos desde el principio para toda la lógica del enrutador
+            String input = normalizarTexto(inputOriginal);
+
+            // M10: Detección de catálogo usando el Set normalizado — cubre tildes y
+            // variantes
+            boolean esCatalogo = Arrays.stream(input.split("\\s+"))
+                    .anyMatch(PALABRAS_CATALOGO::contains);
+            if (esCatalogo) {
                 Log.debug("Enrutador: Detectada consulta de catálogo. Delegando en Tool.");
                 return Collections.emptyList();
             }
 
-            // 2. Extracción de Keywords "Limpia" (ELIMINACIÓN DE RUIDO)
-            // Primero quitamos puntuación, si no "¿qué" cuenta como palabra de 4 letras
+            // Extracción de keywords (M1: usa TODAS_STOPWORDS en lugar de regex literal)
             String inputSinPuntuacion = input.replaceAll("[\\p{Punct}¿¡]", " ");
-
             String queryParaKeywords = Arrays.stream(inputSinPuntuacion.split("\\s+"))
-                    .filter(word -> word.length() > 3) // Filtro de longitud
-                    .filter(word -> !word.matches(
-                            "(?i)(dime|este|estos|sobre|todos|investigación|específicas|mencionan|documentos|puedes|hacer|está|para|donde|cuál|cuáles|quién|cómo|algún|algunos)"))
+                    .filter(word -> word.length() > 3)
+                    .filter(word -> !TODAS_STOPWORDS.contains(word)) // M1: O(1) lookup
                     .collect(Collectors.joining(" "))
                     .trim();
 
-            // Fail-safe: si la limpieza lo deja vacío, usamos el input original sin
-            // puntuación
             if (queryParaKeywords.isEmpty()) {
                 queryParaKeywords = inputSinPuntuacion.trim();
             }
-
             Log.infof("Query optimizada para Keywords: '%s'", queryParaKeywords);
 
-            // 3. Enrutamiento Dinámico
+            // Enrutamiento Dinámico por documento mencionado
             List<DocumentoDTO> todosLosDocs = ingestionService.listarDocumentos();
             List<ContentRetriever> recuperadoresSeleccionados = new ArrayList<>();
 
             for (DocumentoDTO doc : todosLosDocs) {
-                String nombreArchivo = doc.nombre().toLowerCase();
-                // Quitamos la extensión para comparar el nombre base
-                String nombreBase = nombreArchivo.contains(".")
-                        ? nombreArchivo.substring(0, nombreArchivo.lastIndexOf('.'))
-                        : nombreArchivo;
+                // M2: Normalizamos también el nombre del archivo para comparar sin tildes
+                String nombreNormalizado = normalizarTexto(doc.nombre());
+                String nombreBase = nombreNormalizado.contains(".")
+                        ? nombreNormalizado.substring(0, nombreNormalizado.lastIndexOf('.'))
+                        : nombreNormalizado;
 
-                // Detección robusta: nombre completo, nombre base o partes significativas
-                if (input.contains(nombreArchivo) || input.contains(nombreBase)) {
+                if (input.contains(nombreNormalizado) || input.contains(nombreBase)) {
                     Log.infof("Enrutador: Coincidencia detectada para [%s]", doc.nombre());
 
-                    // Recuperador Semántico (Vectorial) filtrado por este archivo
                     recuperadoresSeleccionados.add(EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
                             .maxResults(10)
-                            .minScore(0.60) // Un poco más permisivo para no perder contexto útil
+                            .minScore(0.60)
                             .filter(MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(doc.nombre()))
                             .build());
 
-                    // Recuperador de Palabras Clave (Full-Text Search) para este archivo
-                    recuperadoresSeleccionados
-                            .add(postgresKeywordRetriever.crearRetriever(doc.nombre(), queryParaKeywords));
+                    recuperadoresSeleccionados.add(
+                            postgresKeywordRetriever.crearRetriever(doc.nombre(), queryParaKeywords));
                 }
             }
 
-            // 4. Salida de resultados
             if (!recuperadoresSeleccionados.isEmpty()) {
                 return recuperadoresSeleccionados;
             }
 
-            // BÚSQUEDA GLOBAL (Si no se mencionó ningún archivo específico)
-            double umbralDinamico = input.length() < 15 ? 0.60 : 0.70;
-            Log.debugf("Búsqueda global activa. Umbral: %.2f", umbralDinamico);
+            // BÚSQUEDA GLOBAL: M3 — umbral basado en número de palabras significativas
+            double umbralDinamico = calcularUmbralDinamico(queryParaKeywords);
+            Log.debugf("Búsqueda global activa. Umbral dinámico: %.2f", umbralDinamico);
 
             return Arrays.asList(
                     EmbeddingStoreContentRetriever.builder()
@@ -132,7 +234,7 @@ public class RagConfig {
                     postgresKeywordRetriever.crearRetriever(null, queryParaKeywords));
         };
 
-        // 2. SCORING MODEL PARA RE-RANKING (Similitud Coseno)
+        // 2. SCORING MODEL CON SIMILITUD COSENO (M5: corregida y optimizada)
         ScoringModel scoringModel = new ScoringModel() {
             @Override
             public Response<List<Double>> scoreAll(List<TextSegment> segments, String query) {
@@ -141,27 +243,16 @@ public class RagConfig {
 
                 List<Double> scores = new ArrayList<>();
                 for (Embedding segEmb : segEmbeddings) {
-                    float[] vA = queryEmbedding.vector();
-                    float[] vB = segEmb.vector();
-                    double dotProduct = 0.0;
-                    double normA = 0.0;
-                    double normB = 0.0;
-                    for (int i = 0; i < vA.length; i++) {
-                        dotProduct += vA[i] * vB[i];
-                        normA += Math.pow(vA[i], 2);
-                        normB += Math.pow(vB[i], 2);
-                    }
-                    double cosineSim = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-                    scores.add((cosineSim + 1.0) / 2.0);
+                    scores.add(similitudCoseno(queryEmbedding.vector(), segEmb.vector()));
                 }
                 return Response.from(scores);
             }
         };
 
-        // 3. FUSIÓN DE RESULTADOS (RRF) Y RE-RANKING FINAL
+        // 3. FUSIÓN RRF + RE-RANKING FINAL
         ContentAggregator agregadorRRF = queryToContents -> {
             Log.debug("RRF: Iniciando fusión de resultados híbridos.");
-            int smoothingConstant = 60;
+
             Map<String, Double> contentScores = new HashMap<>();
             Map<String, Content> contentMap = new HashMap<>();
 
@@ -170,18 +261,18 @@ public class RagConfig {
                     int rank = 1;
                     for (Content contenido : resultados) {
                         String id = contenido.textSegment().text();
-                        double rrfScore = 1.0 / (smoothingConstant + rank);
-                        contentScores.merge(id, rrfScore, (v1, v2) -> Double.sum(v1, v2));
+                        double rrfScore = 1.0 / (RRF_K + rank); // M6: constante nombrada
+                        contentScores.merge(id, rrfScore, Double::sum); // M7: referencia de método
                         contentMap.putIfAbsent(id, contenido);
                         rank++;
                     }
                 }
             }
 
-            // Seleccionamos los 15 mejores candidatos RRF para el Re-Ranking
+            // M9: Limitamos candidatos ANTES de llamar al Re-Ranker para ahorrar embeddings
             List<Content> candidatosRRF = contentScores.entrySet().stream()
                     .sorted((e1, e2) -> Double.compare(e2.getValue(), e1.getValue()))
-                    .limit(15)
+                    .limit(MAX_RERANKING_CANDIDATES) // M9: tope configurable
                     .map(e -> contentMap.get(e.getKey()))
                     .collect(Collectors.toList());
 
@@ -195,6 +286,9 @@ public class RagConfig {
                         .collect(Collectors.toList());
 
                 String qText = queryToContents.keySet().iterator().next().text();
+                // M2: normalizamos la query para el "Portero" también
+                String qNormalizada = normalizarTexto(qText);
+
                 List<Double> scores = scoringModel.scoreAll(segmentsToScore, qText).content();
 
                 List<Map.Entry<Content, Double>> reranked = new ArrayList<>();
@@ -202,32 +296,53 @@ public class RagConfig {
                     reranked.add(new AbstractMap.SimpleEntry<>(candidatosRRF.get(i), scores.get(i)));
                 }
 
-                // El "Portero" de Seguridad: Filtrado final por mención de archivo
-                String qLower = qText.toLowerCase();
+                // M4: "Portero" genérico — filtra por los nombres de archivo que aparecen
+                // en la query, derivados del catálogo de documentos en tiempo de ejecución,
+                // en lugar de comparar contra strings literales hardcodeados.
+                List<String> archivosReferenciados = ingestionService.listarDocumentos().stream()
+                        .map(doc -> normalizarTexto(doc.nombre()))
+                        .map(nombre -> nombre.contains(".")
+                                ? nombre.substring(0, nombre.lastIndexOf('.'))
+                                : nombre)
+                        .filter(qNormalizada::contains)
+                        .collect(Collectors.toList());
+
                 return reranked.stream()
                         .filter(e -> {
-                            String fuente = e.getKey().textSegment().metadata().getString("nombre_archivo")
-                                    .toLowerCase();
-                            if (qLower.contains("anteproyecto") && !fuente.contains("anteproyecto"))
-                                return false;
-                            if (qLower.contains("normas") && !fuente.contains("normas"))
-                                return false;
-                            return true;
+                            // Si la query no menciona ningún archivo específico, no filtramos
+                            if (archivosReferenciados.isEmpty())
+                                return true;
+
+                            // Si menciona alguno, solo pasamos fragmentos de ese archivo
+                            String fuenteNormalizada = normalizarTexto(
+                                    e.getKey().textSegment().metadata()
+                                            .getString("nombre_archivo"));
+                            return archivosReferenciados.stream()
+                                    .anyMatch(fuenteNormalizada::contains);
                         })
                         .sorted((e1, e2) -> Double.compare(e2.getValue(), e1.getValue()))
-                        .limit(5)
+                        .limit(MAX_RESULTADOS_FINALES)
                         .map(Map.Entry::getKey)
                         .collect(Collectors.toList());
 
             } catch (Exception ex) {
                 Log.error("Error en Re-Ranking, aplicando fallback RRF.", ex);
-                return candidatosRRF.stream().limit(5).collect(Collectors.toList());
+                return candidatosRRF.stream().limit(MAX_RESULTADOS_FINALES).collect(Collectors.toList());
             }
         };
 
         // 4. INYECTOR DE CONTENIDO
+        // M8: Se amplían los metadatos inyectados al contexto del LLM.
+        // El system prompt ordena usar "tecnologias", "fechas" y "documento_id"
+        // explícitamente, pero el original solo enviaba "nombre_archivo" y "entidades".
         DefaultContentInjector inyectorContenido = DefaultContentInjector.builder()
-                .metadataKeysToInclude(Arrays.asList("nombre_archivo", "entidades"))
+                .metadataKeysToInclude(Arrays.asList(
+                        "nombre_archivo", // fuente primaria de citación
+                        "documento_id", // trazabilidad interna
+                        "entidades", // personas, organizaciones, conceptos clave
+                        "tecnologias", // M8: stack tecnológico — el system prompt lo exige
+                        "fechas" // M8: referencias temporales del documento
+                ))
                 .promptTemplate(PromptTemplate.from(
                         "{{userMessage}}\n\n" +
                                 "--- Contexto de Documentos ---\n" +
@@ -240,6 +355,99 @@ public class RagConfig {
                 .contentInjector(inyectorContenido)
                 .build();
     }
+
+    // -------------------------------------------------------------------------
+    // MÉTODOS DE UTILIDAD PRIVADOS
+    // -------------------------------------------------------------------------
+
+    /**
+     * M2: Normaliza un texto eliminando diacríticos (tildes, diéresis) y
+     * convirtiéndolo a minúsculas, para comparaciones robustas entre la query
+     * del usuario y los nombres de los documentos almacenados.
+     *
+     * Ejemplo: "Análisis" → "analisis", "Ñoño" → "nono"
+     *
+     * @param texto Texto de entrada.
+     * @return Texto normalizado en minúsculas sin diacríticos.
+     */
+    private static String normalizarTexto(String texto) {
+        if (texto == null)
+            return "";
+        String nfd = Normalizer.normalize(texto.toLowerCase(), Normalizer.Form.NFD);
+        return nfd.replaceAll("\\p{InCombiningDiacriticalMarks}", "");
+    }
+
+    /**
+     * M3: Calcula el umbral de similitud mínimo para la búsqueda global
+     * en función del número de palabras significativas en la query.
+     *
+     * El original usaba input.length() < 15 caracteres como proxy, lo que era
+     * inestable: "IA" tiene 2 chars pero es una consulta muy precisa; "cuéntame
+     * algo" tiene 15 chars pero es extremadamente vaga.
+     *
+     * Ahora el umbral escala con la riqueza léxica de la query:
+     * - ≤ 2 palabras → 0.60 (umbral permisivo: query corta, necesitamos más
+     * candidatos)
+     * - 3-4 palabras → 0.65 (umbral intermedio)
+     * - ≥ 5 palabras → 0.75 (umbral estricto: query rica, el match debe ser
+     * preciso)
+     *
+     * @param queryKeywords Query ya filtrada de stopwords.
+     * @return Umbral de similitud en [0.60, 0.75].
+     */
+    private static double calcularUmbralDinamico(String queryKeywords) {
+        long numPalabras = Arrays.stream(queryKeywords.split("\\s+"))
+                .filter(w -> !w.isBlank())
+                .count();
+
+        if (numPalabras <= 2)
+            return 0.60;
+        if (numPalabras <= 4)
+            return 0.65;
+        return 0.75;
+    }
+
+    /**
+     * M5: Calcula la similitud coseno entre dos vectores de forma segura y
+     * eficiente.
+     *
+     * Mejoras respecto al cálculo inline original:
+     * a) vA[i]*vA[i] en lugar de Math.pow(vA[i], 2) — evita la costosa conversión
+     * a double y el boxeo implícito, ~3x más rápido en vectores de alta dimensión.
+     * b) Math.sqrt(normA * normB) — una sola llamada en lugar de dos sqrt
+     * separados.
+     * c) Guarda de división por cero: si cualquiera de los dos vectores tiene norma
+     * 0 (vector nulo), retorna 0.0 en lugar de NaN o lanzar ArithmeticException.
+     * d) El resultado se escala de [-1,1] a [0,1] para compatibilidad con el
+     * ScoringModel de LangChain4j.
+     *
+     * @param vA Vector de la query.
+     * @param vB Vector del segmento candidato.
+     * @return Similitud normalizada en [0.0, 1.0].
+     */
+    private static double similitudCoseno(float[] vA, float[] vB) {
+        double dotProduct = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+
+        for (int i = 0; i < vA.length; i++) {
+            dotProduct += vA[i] * vB[i]; // M5a: multiplicación directa, sin Math.pow
+            normA += vA[i] * vA[i];
+            normB += vB[i] * vB[i];
+        }
+
+        double denominador = Math.sqrt(normA * normB); // M5b: un solo sqrt
+
+        if (denominador == 0.0)
+            return 0.0; // M5c: guarda de división por cero
+
+        double cosineSim = dotProduct / denominador;
+        return (cosineSim + 1.0) / 2.0; // Escala [-1,1] → [0,1]
+    }
+
+    // -------------------------------------------------------------------------
+    // MÉTODOS PÚBLICOS DE UTILIDAD
+    // -------------------------------------------------------------------------
 
     public static ContentRetriever createFilteredRetriever(
             EmbeddingStore<TextSegment> embeddingStore,

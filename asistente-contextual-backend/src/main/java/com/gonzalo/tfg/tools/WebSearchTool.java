@@ -9,7 +9,6 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.stream.Collectors;
 
 @ApplicationScoped

@@ -148,7 +148,7 @@ public class DocumentResource
     {
         try
         {
-            DocumentoDTO recurso = ingestionService.obtenerDocumento(id);
+            DocumentoDTO recurso = ingestionService.obtenerDocumento(id).orElse(null);
             if (recurso == null)
             {
                 return Response.status(Response.Status.NOT_FOUND)

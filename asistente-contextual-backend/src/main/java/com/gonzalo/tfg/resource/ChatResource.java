@@ -2,7 +2,9 @@ package com.gonzalo.tfg.resource;
 
 import com.gonzalo.tfg.entity.ChatSessionEntity;
 import com.gonzalo.tfg.model.ChatSessionSummaryDTO;
+import com.gonzalo.tfg.service.ChatService;
 import io.quarkus.panache.common.Sort;
+import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -18,6 +20,9 @@ import java.util.stream.Collectors;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class ChatResource {
+
+    @Inject
+    ChatService chatService;
 
     /*
      Obtiene el listado de todas las sesiones de chat registradas.
@@ -35,17 +40,21 @@ public class ChatResource {
 
     /*
      * Elimina una sesión de chat por su identificador.
-     * 
+     * Borra el registro de BD (con su JSON de mensajes), limpia la memoria
+     * en caché de LangChain4j y purga los vectores asociados en pgvector.
+     *
      * @param id Identificador único de la sesión.
-     * @return 204 No Content si se eliminó correctamente.
+     * @return 204 No Content si se eliminó correctamente, 404 si no existe.
      */
     @DELETE
     @Path("/{id}")
-    @Transactional
     public Response borrarSesion(@PathParam("id") String id) {
-        boolean eliminado = ChatSessionEntity.deleteById(id);
+        boolean eliminado = chatService.eliminarSesion(id);
         if (!eliminado) {
-            throw new WebApplicationException("Sesión no encontrada para borrar: " + id, Response.Status.NOT_FOUND);
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity("{\"error\":\"Sesión no encontrada: " + id + "\"}")
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
         }
         return Response.noContent().build();
     }
@@ -79,11 +88,17 @@ public class ChatResource {
     @Path("/{id}/historial")
     public String obtenerHistorial(@PathParam("id") String id) {
         ChatSessionEntity entity = ChatSessionEntity.findById(id);
-        
+
         if (entity == null) {
             throw new WebApplicationException("Sesión de chat no encontrada: " + id, Response.Status.NOT_FOUND);
         }
-        
+
+        // Devuelve array vacío si la sesión existe pero todavía no tiene mensajes persistidos,
+        // evitando un cuerpo nulo que el frontend interpretaría como error 500.
+        if (entity.messagesJson == null || entity.messagesJson.isBlank()) {
+            return "[]";
+        }
+
         return entity.messagesJson;
     }
 }
