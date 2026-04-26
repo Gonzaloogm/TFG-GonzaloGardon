@@ -207,7 +207,7 @@ public class RagConfig {
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
                             .maxResults(10)
-                            .minScore(0.60)
+                            .minScore(0.65)
                             .filter(MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(doc.nombre()))
                             .build());
 
@@ -220,8 +220,13 @@ public class RagConfig {
                 return recuperadoresSeleccionados;
             }
 
+            // HyDE (Hypothetical Document Embeddings) Placeholder
+            // En una fase posterior, aquí se llamaría a un LLM para generar una respuesta hipotética
+            // y se usaría el embedding de esa respuesta para la recuperación semántica.
+            String queryParaVector = inputOriginal; // Por ahora directo
+
             // BÚSQUEDA GLOBAL: M3 — umbral basado en número de palabras significativas
-            double umbralDinamico = calcularUmbralDinamico(queryParaKeywords);
+            double umbralDinamico = Math.max(0.65, calcularUmbralDinamico(queryParaKeywords));
             Log.debugf("Búsqueda global activa. Umbral dinámico: %.2f", umbralDinamico);
 
             return Arrays.asList(

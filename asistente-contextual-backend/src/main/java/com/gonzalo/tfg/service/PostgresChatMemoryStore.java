@@ -9,22 +9,39 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.store.memory.chat.ChatMemoryStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
+import io.quarkus.logging.Log;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
-/**
- * Gestión de persistencia de chat en PostgreSQL.
- * Implementa limpieza de mensajes RAG para evitar el guardado de prompts
- * aumentados.
- */
 @ApplicationScoped
 public class PostgresChatMemoryStore implements ChatMemoryStore {
+
+    /**
+     * Convierte el memoryId que LangChain4j proporciona a String de forma segura.
+     *
+     * LangChain4j no garantiza que memoryId sea siempre un String: en contextos
+     * CDI sin petición activa (hilos de Vert.x, observadores) puede llegar como
+     * un objeto de scope interno de Quarkus. El cast directo (String) memoryId
+     * producía el toString() del RequestContextState en lugar del UUID real,
+     * causando que todas las búsquedas en BD fallaran silenciosamente.
+     */
+    private static String resolverSessionId(Object memoryId) {
+        if (memoryId instanceof String s)
+            return s;
+        if (memoryId instanceof UUID u)
+            return u.toString();
+        throw new IllegalArgumentException(
+                "memoryId de tipo inesperado: " + memoryId.getClass().getName() + " = " + memoryId);
+    }
 
     @Override
     @Transactional
     public List<ChatMessage> getMessages(Object memoryId) {
-        String sessionId = (String) memoryId;
+        String sessionId = resolverSessionId(memoryId);
         ChatSessionEntity entidad = ChatSessionEntity.findById(sessionId);
 
         if (entidad == null || entidad.messagesJson == null || entidad.messagesJson.isEmpty()) {
@@ -37,7 +54,7 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
     @Override
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void updateMessages(Object memoryId, List<ChatMessage> messages) {
-        String sessionId = (String) memoryId;
+        String sessionId = resolverSessionId(memoryId);
         ChatSessionEntity entity = ChatSessionEntity.findById(sessionId);
 
         if (entity == null) {
@@ -46,20 +63,17 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
             entity.titulo = "Sin nombre";
         }
 
-        // LIMPIEZA QUIRÚRGICA: Cortamos por el separador de instrucciones
         List<ChatMessage> mensajesLimpios = messages.stream()
                 .map(m -> {
                     if (m instanceof UserMessage userMsg) {
                         String t = userMsg.singleText();
                         if (t.contains("--- Instrucciones de respuesta ---")) {
-                            // Nos quedamos solo con lo que hay ANTES del separador (tu pregunta)
                             return UserMessage.from(t.split("--- Instrucciones de respuesta ---")[0].trim());
                         }
                     }
                     return m;
-                }).collect(java.util.stream.Collectors.toList());
+                }).collect(Collectors.toList());
 
-        // Título dinámico basado en la pregunta limpia
         if (("Sin nombre".equals(entity.titulo) || entity.titulo == null) && !mensajesLimpios.isEmpty()) {
             for (ChatMessage msg : mensajesLimpios) {
                 if (msg.type() == ChatMessageType.USER) {
@@ -75,15 +89,20 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
         entity.persist();
     }
 
+    /**
+     * LangChain4j llama a este método para que el store limpie su caché interna.
+     * La eliminación real de la fila en BD la gestiona
+     * ChatService.eliminarSesion(),
+     * que ya llama a ChatSessionEntity.deleteById() dentro de su propia
+     * transacción.
+     * Repetir el deleteById() aquí causaba una doble eliminación: la primera
+     * devolvía true y la segunda false, haciendo que ChatService reportara
+     * erróneamente que la sesión no existía.
+     */
     @Override
-    @Transactional
     public void deleteMessages(Object memoryId) {
-        String sessionId = (String) memoryId;
-        // Elimina la fila de persistencia para que LangChain4j no rehidrate
-        // una sesión que ya fue borrada vía ChatResource/ChatService.
-        boolean eliminado = ChatSessionEntity.deleteById(sessionId);
-        if (eliminado) {
-            io.quarkus.logging.Log.infof("PostgresChatMemoryStore: mensajes de sesión '%s' eliminados.", sessionId);
-        }
+        String sessionId = resolverSessionId(memoryId);
+        Log.debugf("deleteMessages invocado para sesión '%s' — eliminación de BD ya gestionada por ChatService.",
+                sessionId);
     }
 }

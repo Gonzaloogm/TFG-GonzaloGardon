@@ -51,14 +51,22 @@ public class ChatResource {
     @Path("/{id}")
     @Transactional
     public Response borrarSesion(@PathParam("id") String id) {
-        boolean eliminado = chatService.eliminarSesion(id);
-        if (!eliminado) {
-            return Response.status(Response.Status.NOT_FOUND)
-                    .entity("{\"error\":\"Sesión no encontrada: " + id + "\"}")
+        try {
+            boolean eliminado = chatService.eliminarSesion(id);
+            if (!eliminado) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("{\"error\":\"Sesión no encontrada: " + id + "\"}")
+                        .type(MediaType.APPLICATION_JSON)
+                        .build();
+            }
+            return Response.noContent().build();
+        } catch (Exception e) {
+            io.quarkus.logging.Log.error("Error crítico al eliminar la sesión " + id, e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\":\"Error interno al eliminar la sesión. Consulte los logs.\"}")
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         }
-        return Response.noContent().build();
     }
 
     /*
