@@ -30,8 +30,7 @@ import java.util.Set;
 @Path("/api/documentos")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-public class DocumentResource
-{
+public class DocumentResource {
 
     @Inject
     DocumentIngestionService ingestionService;
@@ -41,8 +40,7 @@ public class DocumentResource
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX
             "application/msword", // DOC
-            "text/plain"
-    );
+            "text/plain");
 
     // Tamaño máximo: 10MB
     private static final long TAMANIO_MAXIMO = 10 * 1024 * 1024;
@@ -52,13 +50,11 @@ public class DocumentResource
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     public Response subirDocumento(
             @RestForm("file") FileUpload ficheroCargado,
-            @RestForm("metadatos") String metadatos
-    )
-    {
-        Log.infof("Petición de subida recibida: %s", ficheroCargado.fileName());
+            @RestForm("metadatos") String metadatos,
+            @QueryParam("enriquecer") @DefaultValue("true") boolean enriquecer) {
+        Log.infof("Petición de subida recibida: %s (Enriquecer: %b)", ficheroCargado.fileName(), enriquecer);
 
-        try
-        {
+        try {
             // 1. Verificación de la integridad del fichero en la petición
             if (ficheroCargado == null || ficheroCargado.fileName() == null || ficheroCargado.fileName().isBlank()) {
                 Log.warn("Intento de subida sin contenido de fichero");
@@ -69,8 +65,7 @@ public class DocumentResource
 
             // 2. Validación del tipo MIME (Multipurpose Internet Mail Extensions)
             String tipoMime = ficheroCargado.contentType();
-            if (!TIPOS_PERMITIDOS.contains(tipoMime))
-            {
+            if (!TIPOS_PERMITIDOS.contains(tipoMime)) {
                 Log.warnf("Formato de fichero no soportado: %s", tipoMime);
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(new ErrorResponse("Formato incompatible. Extensiones soportadas: PDF, DOCX, DOC, TXT"))
@@ -79,8 +74,7 @@ public class DocumentResource
 
             // 3. Control de cuota de tamaño
             long tamanioEfectivo = Files.size(ficheroCargado.filePath());
-            if (tamanioEfectivo > TAMANIO_MAXIMO)
-            {
+            if (tamanioEfectivo > TAMANIO_MAXIMO) {
                 Log.warnf("Exceso de tamaño detectado: %d bytes", tamanioEfectivo);
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(new ErrorResponse("El fichero sobrepasa el límite máximo permitido de 10MB"))
@@ -92,8 +86,8 @@ public class DocumentResource
             DocumentoDTO resultado = ingestionService.ingerirFichero(
                     ficheroCargado.filePath(),
                     ficheroCargado.fileName(),
-                    metadatos
-            );
+                    metadatos,
+                    enriquecer);
 
             Log.infof("Proceso de ingestión finalizado con éxito. Recurso ID: %s", resultado.id());
 
@@ -102,14 +96,12 @@ public class DocumentResource
                     .entity(resultado)
                     .build();
 
-        } catch (IOException e)
-        {
+        } catch (IOException e) {
             Log.errorf(e, "Fallo en la lectura del flujo de datos: %s", ficheroCargado.fileName());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(new ErrorResponse("Error durante el procesamiento del flujo de datos: " + e.getMessage()))
                     .build();
-        } catch (Exception e)
-        {
+        } catch (Exception e) {
             Log.errorf(e, "Excepción no controlada durante la subida del fichero");
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(new ErrorResponse("Error interno de servidor no especificado"))
@@ -118,18 +110,16 @@ public class DocumentResource
     }
 
     /*
-     Endpoint para la recuperación síncrona del catálogo completo de ficheros.
-     @return Colección de objetos DocumentoDTO.
+     * Endpoint para la recuperación síncrona del catálogo completo de ficheros.
+     * 
+     * @return Colección de objetos DocumentoDTO.
      */
     @GET
-    public Response listarDocumentos()
-    {
-        try
-        {
+    public Response listarDocumentos() {
+        try {
             List<DocumentoDTO> catalogo = ingestionService.listarDocumentos();
             return Response.ok(catalogo).build();
-        } catch (Exception e)
-        {
+        } catch (Exception e) {
             Log.errorf(e, "Fallo en la recuperación del catálogo");
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(new ErrorResponse("No se pudo obtener la lista de ficheros"))
@@ -138,26 +128,24 @@ public class DocumentResource
     }
 
     /*
-     Endpoint para la consulta detallada de un recurso por su ID.
-     @param id Identificador único del fichero.
-     @return DocumentoDTO correspondiente o error 404.
+     * Endpoint para la consulta detallada de un recurso por su ID.
+     * 
+     * @param id Identificador único del fichero.
+     * 
+     * @return DocumentoDTO correspondiente o error 404.
      */
     @GET
     @Path("/{id}")
-    public Response obtenerDocumento(@PathParam("id") String id)
-    {
-        try
-        {
+    public Response obtenerDocumento(@PathParam("id") String id) {
+        try {
             DocumentoDTO recurso = ingestionService.obtenerDocumento(id).orElse(null);
-            if (recurso == null)
-            {
+            if (recurso == null) {
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(new ErrorResponse("Recurso no localizado en la base de conocimiento"))
                         .build();
             }
             return Response.ok(recurso).build();
-        } catch (Exception e)
-        {
+        } catch (Exception e) {
             Log.errorf(e, "Fallo en la consulta del recurso con ID: %s", id);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(new ErrorResponse("Error en la recuperación del recurso solicitado"))
@@ -166,27 +154,25 @@ public class DocumentResource
     }
 
     /*
-     Endpoint para la eliminación física y lógica de un recurso.
-     @param id Identificador único del fichero a purgar.
-     @return Response 204 No Content en éxito o error 404.
+     * Endpoint para la eliminación física y lógica de un recurso.
+     * 
+     * @param id Identificador único del fichero a purgar.
+     * 
+     * @return Response 204 No Content en éxito o error 404.
      */
     @DELETE
     @Path("/{id}")
-    public Response eliminarDocumento(@PathParam("id") String id)
-    {
-        try
-        {
+    public Response eliminarDocumento(@PathParam("id") String id) {
+        try {
             boolean resultadoPurga = ingestionService.eliminarDocumento(id);
-            if (!resultadoPurga)
-            {
+            if (!resultadoPurga) {
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(new ErrorResponse("No se pudo purgar: recurso no localizado"))
                         .build();
             }
             Log.infof("🗑️ Purga confirmada para el recurso: %s", id);
             return Response.noContent().build();
-        } catch (Exception e)
-        {
+        } catch (Exception e) {
             Log.errorf(e, "Fallo durante la operación de purga del recurso: %s", id);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(new ErrorResponse("Error interno durante la purga del fichero"))
@@ -195,7 +181,8 @@ public class DocumentResource
     }
 
     /*
-     Clase auxiliar para respuestas de error.
+     * Clase auxiliar para respuestas de error.
      */
-    public record ErrorResponse(String error) {}
+    public record ErrorResponse(String error) {
+    }
 }

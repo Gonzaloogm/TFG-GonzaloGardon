@@ -25,10 +25,10 @@ public class ChatResource {
     ChatService chatService;
 
     /*
-     Obtiene el listado de todas las sesiones de chat registradas.
-     Las sesiones se devuelven ordenadas por fecha de actualización descendente.
-     
-     @return Lista de resúmenes de sesiones (ID y fecha).
+     * Obtiene el listado de todas las sesiones de chat registradas.
+     * Las sesiones se devuelven ordenadas por fecha de actualización descendente.
+     * 
+     * @return Lista de resúmenes de sesiones (ID y fecha).
      */
     @GET
     public List<ChatSessionSummaryDTO> obtenerSesiones() {
@@ -44,10 +44,12 @@ public class ChatResource {
      * en caché de LangChain4j y purga los vectores asociados en pgvector.
      *
      * @param id Identificador único de la sesión.
+     * 
      * @return 204 No Content si se eliminó correctamente, 404 si no existe.
      */
     @DELETE
     @Path("/{id}")
+    @Transactional
     public Response borrarSesion(@PathParam("id") String id) {
         boolean eliminado = chatService.eliminarSesion(id);
         if (!eliminado) {
@@ -63,7 +65,9 @@ public class ChatResource {
      * Actualiza manualmente el título de una sesión de chat.
      * 
      * @param id Identificador único de la sesión.
+     * 
      * @param nuevoTitulo Nuevo texto para el título.
+     * 
      * @return 200 OK si se actualizó correctamente.
      */
     @PUT
@@ -72,17 +76,19 @@ public class ChatResource {
     public Response actualizarTitulo(@PathParam("id") String id, String nuevoTitulo) {
         ChatSessionEntity entity = ChatSessionEntity.findById(id);
         if (entity == null) {
-            throw new WebApplicationException("Sesión no encontrada para actualizar título: " + id, Response.Status.NOT_FOUND);
+            throw new WebApplicationException("Sesión no encontrada para actualizar título: " + id,
+                    Response.Status.NOT_FOUND);
         }
         entity.titulo = nuevoTitulo;
         return Response.ok().build();
     }
 
     /*
-     Recupera el historial completo de mensajes de una sesión específica.
-     
-     @param id Identificador único de la sesión (sessionId).
-     @return Cadena JSON con el historial de mensajes.
+     * Recupera el historial completo de mensajes de una sesión específica.
+     * 
+     * @param id Identificador único de la sesión (sessionId).
+     * 
+     * @return Cadena JSON con el historial de mensajes.
      */
     @GET
     @Path("/{id}/historial")
@@ -93,7 +99,8 @@ public class ChatResource {
             throw new WebApplicationException("Sesión de chat no encontrada: " + id, Response.Status.NOT_FOUND);
         }
 
-        // Devuelve array vacío si la sesión existe pero todavía no tiene mensajes persistidos,
+        // Devuelve array vacío si la sesión existe pero todavía no tiene mensajes
+        // persistidos,
         // evitando un cuerpo nulo que el frontend interpretaría como error 500.
         if (entity.messagesJson == null || entity.messagesJson.isBlank()) {
             return "[]";

@@ -4,9 +4,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--
+        S3: Content Security Policy añadida.
+        - default-src 'self': solo recursos del mismo origen por defecto.
+        - script-src: permite marked.js desde CDN y scripts inline (necesario para el app script).
+        - style-src 'unsafe-inline': permite los estilos inline existentes.
+        Esto bloquea la carga de scripts externos no autorizados aunque haya XSS.
+    -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:;">
     <title>Asistente Contextual - TFG</title>
-    <!-- Importar Marked.js -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!--
+        S2: DOMPurify para sanitizar el HTML generado por marked.parse().
+        Sin esto, el LLM puede devolver <script> o <img onerror=...> y se ejecutan.
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
     <style>
         :root {
             --bg-body: #f7f7f8;
@@ -37,7 +50,6 @@
             color: var(--text-primary);
         }
 
-        /* Scrollbar styling */
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -55,7 +67,6 @@
             background: #a8a8a8;
         }
 
-        /* Sidebar principal */
         #sidebar {
             width: 320px;
             min-width: 320px;
@@ -147,8 +158,6 @@
             padding: 6px;
             border-radius: 4px;
             transition: all 0.2s;
-            position: relative;
-            z-index: 10;
         }
 
         .refresh-btn:hover {
@@ -156,7 +165,6 @@
             color: var(--text-primary);
         }
 
-        /* Estilos para la lista de chats */
         #chat-list {
             list-style: none;
         }
@@ -186,6 +194,7 @@
             border-left: 4px solid var(--primary-color);
         }
 
+        /* U7: Transición suave en acciones del chat */
         .chat-item .chat-actions {
             opacity: 0;
             transition: opacity 0.2s;
@@ -222,7 +231,6 @@
             background: var(--primary-hover);
         }
 
-        /* Estilos existentes para documentos base */
         #documents-list {
             list-style: none;
         }
@@ -246,7 +254,6 @@
         .doc-info {
             flex: 1;
             min-width: 0;
-            /* for text truncation */
             margin-right: 10px;
         }
 
@@ -282,7 +289,6 @@
             color: var(--danger-hover);
         }
 
-        /* Chat area */
         #main {
             flex: 1;
             display: flex;
@@ -446,7 +452,6 @@
             margin-bottom: 15px;
         }
 
-        /* System/Error messages */
         .system-bubble {
             padding: 8px 15px;
             border-radius: 6px;
@@ -462,7 +467,6 @@
             border: 1px solid #fde8e8;
         }
 
-        /* Typing indicator */
         .typing-indicator {
             display: none;
             padding: 15px 20px;
@@ -507,20 +511,22 @@
             }
         }
 
-        /* Input area */
         #input-container {
             padding: 20px 30px 30px;
             background: var(--bg-chat);
         }
 
+        /* U5: El input-box ahora aloja un textarea autoexpandible */
         #input-box {
             display: flex;
-            align-items: center;
+            align-items: flex-end;
+            /* alineación al fondo para el textarea */
             background: white;
             border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 10px 15px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            gap: 8px;
         }
 
         #input-box:focus-within {
@@ -528,6 +534,10 @@
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
         }
 
+        /*
+         * U5: textarea en lugar de input — crece automáticamente con el contenido.
+         * max-height limita el crecimiento a ~6 líneas para no ocupar toda la pantalla.
+         */
         #msg {
             flex: 1;
             border: none;
@@ -536,6 +546,12 @@
             background: transparent;
             outline: none;
             color: var(--text-primary);
+            resize: none;
+            min-height: 38px;
+            max-height: 160px;
+            overflow-y: auto;
+            line-height: 1.5;
+            font-family: inherit;
         }
 
         #send-btn {
@@ -548,11 +564,18 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background 0.2s;
+            transition: background 0.2s, opacity 0.2s;
+            flex-shrink: 0;
         }
 
         #send-btn:hover {
             background: var(--bubble-user);
+        }
+
+        /* A2: Estado "enviando" — botón deshabilitado mientras espera respuesta */
+        #send-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
         }
 
         #send-btn svg {
@@ -560,7 +583,34 @@
             height: 20px;
         }
 
-        /* Loading spinner for upload */
+        /* U6: Contador de caracteres bajo el input */
+        #char-counter {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-align: right;
+            padding: 4px 15px 0;
+            transition: color 0.2s;
+        }
+
+        #char-counter.warning {
+            color: #d97706;
+        }
+
+        #char-counter.danger {
+            color: var(--danger-color);
+        }
+
+        /* U1: Indicador de carga del historial */
+        .historial-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
         .spinner {
             display: inline-block;
             width: 16px;
@@ -577,7 +627,6 @@
             }
         }
 
-        /* FONDO DEL MODAL: Blanco y con sombras suaves */
         .modal-overlay {
             background: rgba(0, 0, 0, 0.4) !important;
             backdrop-filter: blur(2px);
@@ -604,10 +653,8 @@
             font-family: sans-serif;
         }
 
-        /* TÍTULO Y TEXTO */
         .modal-content h2 {
             color: #10a37f !important;
-            /* Mismo verde que el botón Nuevo Chat */
             font-size: 1.4rem !important;
             margin-bottom: 12px !important;
             font-weight: 600 !important;
@@ -620,7 +667,6 @@
             line-height: 1.5 !important;
         }
 
-        /* BOTONES: Sincronizados con la paleta de colores actual */
         .modal-buttons {
             margin-top: 25px !important;
             display: flex !important;
@@ -641,7 +687,6 @@
 
         .btn-confirm {
             background: #10a37f !important;
-            /* VERDE CORPORATIVO */
             color: #ffffff !important;
             border: none !important;
             padding: 10px 20px !important;
@@ -652,13 +697,13 @@
         }
 
         .btn-confirm:hover {
-            background: #10a37f !important;
+            background: #0e8c6d !important;
         }
 
         .btn-cancel:hover {
             background: #e8eaed !important;
         }
-        /* ========== Toast System ========== */
+
         #toast-container {
             position: fixed;
             bottom: 24px;
@@ -679,7 +724,7 @@
             font-size: 14px;
             font-weight: 500;
             max-width: 340px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
             animation: toast-in 0.25s ease;
             pointer-events: auto;
         }
@@ -703,26 +748,39 @@
         }
 
         @keyframes toast-in {
-            from { opacity: 0; transform: translateY(12px); }
-            to   { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         @keyframes toast-out {
-            from { opacity: 1; transform: translateY(0); }
-            to   { opacity: 0; transform: translateY(12px); }
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+
+            to {
+                opacity: 0;
+                transform: translateY(12px);
+            }
         }
     </style>
 </head>
 
 <body>
     <div id="sidebar">
-        <!-- Sección de Conversaciones -->
         <div class="sidebar-section" id="chats-section">
             <div class="sidebar-section-header">
                 <h2>Conversaciones</h2>
             </div>
             <div class="scroll-area">
-                <button id="new-chat-btn" onclick="crearNuevoChat()">
+                <button id="new-chat-btn">
                     <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round"
                         stroke-linejoin="round" height="16" width="16" xmlns="http://www.w3.org/2000/svg">
                         <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -730,17 +788,14 @@
                     </svg>
                     Nuevo Chat
                 </button>
-                <ul id="chat-list">
-                    <!-- Los chats se cargan dinámicamente -->
-                </ul>
+                <ul id="chat-list"></ul>
             </div>
         </div>
 
-        <!-- Sección de Base de Conocimiento -->
         <div class="sidebar-section" id="knowledge-section">
             <div class="sidebar-section-header">
                 <h2>Base de Conocimiento</h2>
-                <button class="refresh-btn" onclick="fetchDocuments()" title="Recargar lista de documentos">
+                <button class="refresh-btn" id="refresh-docs-btn" title="Recargar lista de documentos">
                     <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round"
                         stroke-linejoin="round" height="16" width="16" xmlns="http://www.w3.org/2000/svg">
                         <polyline points="23 4 23 10 17 10"></polyline>
@@ -749,11 +804,10 @@
                     </svg>
                 </button>
             </div>
-
             <div class="scroll-area">
                 <div id="upload-area" style="margin-bottom: 15px;">
                     <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt" style="display: none;" />
-                    <button id="upload-btn" onclick="triggerFileInput()"
+                    <button id="upload-btn"
                         style="width: 100%; padding: 10px; background: white; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
                         <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"
                             stroke-linecap="round" stroke-linejoin="round" height="16" width="16"
@@ -766,7 +820,6 @@
                     </button>
                     <div id="upload-status"></div>
                 </div>
-
                 <div id="documents-list">
                     <p style="color: var(--text-secondary); text-align: center; padding: 20px; font-size: 13px;">
                         No hay documentos cargados
@@ -779,8 +832,8 @@
     <div id="main">
         <div id="chat-header">
             <div style="display: flex; align-items: center; gap: 15px;">
-                <button id="sidebar-toggle" onclick="toggleSidebar()" title="Ocultar/Mostrar panel lateral"
-                    style="color: var(--text-secondary);">
+                <button id="sidebar-toggle" title="Ocultar/Mostrar panel lateral"
+                    style="color: var(--text-secondary); background: transparent; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
                     <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round"
                         stroke-linejoin="round" height="22" width="22" xmlns="http://www.w3.org/2000/svg">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -795,24 +848,26 @@
             </div>
         </div>
 
-        <div id="chat">
-
-        </div>
+        <div id="chat"></div>
 
         <div id="typing-container" style="padding: 0 30px 10px; display: flex; width: 100%;">
             <div id="typing-indicator" class="typing-indicator">
-                <div class="typing-dots">
-                    <span></span><span></span><span></span>
-                </div>
+                <div class="typing-dots"><span></span><span></span><span></span></div>
                 Asistente está escribiendo...
             </div>
         </div>
 
         <div id="input-container">
             <div id="input-box">
-                <input type="text" id="msg" placeholder="Envía un mensaje al asistente..."
-                    onkeypress="if(event.key === 'Enter') send()" autocomplete="off">
-                <button id="send-btn" onclick="send()" title="Enviar mensaje">
+                <!--
+                    U5: textarea en lugar de <input type="text">.
+                    Crece automáticamente con el contenido vía JS (autoResize).
+                    A4: Los event listeners se registran desde JS, no como atributos inline.
+                -->
+                <textarea id="msg"
+                    placeholder="Envía un mensaje al asistente... (Enter para enviar, Shift+Enter para nueva línea)"
+                    rows="1" autocomplete="off"></textarea>
+                <button id="send-btn" title="Enviar mensaje">
                     <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 20 20" height="1em"
                         width="1em" xmlns="http://www.w3.org/2000/svg">
                         <path
@@ -821,10 +876,12 @@
                     </svg>
                 </button>
             </div>
+            <!-- U6: Contador de caracteres -->
+            <div id="char-counter"></div>
         </div>
     </div>
 
-    <!-- Modal de confirmación (blanco/verde) -->
+    <!-- Modal de confirmación -->
     <div id="custom-modal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <h2 id="modal-title"></h2>
@@ -842,8 +899,8 @@
             <h2 id="input-modal-title"></h2>
             <p id="input-modal-description"></p>
             <input id="input-modal-field"
-                   style="width:100%;margin-top:14px;padding:10px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;outline:none;box-sizing:border-box;"
-                   type="text" />
+                style="width:100%;margin-top:14px;padding:10px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:14px;outline:none;box-sizing:border-box;"
+                type="text" />
             <div class="modal-buttons">
                 <button id="input-modal-cancel" class="btn-cancel">Cancelar</button>
                 <button id="input-modal-confirm" class="btn-confirm">Guardar</button>
@@ -851,527 +908,735 @@
         </div>
     </div>
 
-    <!-- Contenedor de toasts -->
     <div id="toast-container"></div>
 
     <script>
-        // ========== Variables Globales ==========
-        let idSesionActual;
+        /*
+         * A1: Todo el código de aplicación encapsulado en un IIFE (Immediately Invoked
+         * Function Expression). Esto elimina todas las variables globales sueltas
+         * (socket, chat, statusText, etc.) y previene colisiones con scripts futuros.
+         * Las funciones que deben ser accesibles desde el HTML (p.ej. onclick) se
+         * exponen explícitamente en window.App al final del IIFE.
+         */
+        (function () {
+            'use strict';
 
-        // ========== Lógica de Utilidades ==========
-        function limpiarRespuesta(texto) {
-            if (!texto) return "";
-            return texto.replace(/<thinking>[\s\S]*?<\/thinking>/g, "").trim();
-        }
-
-        // ========== Toast System ==========
-        function mostrarToast(mensaje, tipo = 'error', duracion = 3500) {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast ${tipo}`;
-
-            const iconos = {
-                success: '✓',
-                error: '✕',
-                info: 'ℹ'
-            };
-            toast.innerHTML = `<span style="font-size:15px;">${iconos[tipo] || '!'}</span><span>${mensaje}</span>`;
-            container.appendChild(toast);
-
-            setTimeout(() => {
-                toast.style.animation = 'toast-out 0.25s ease forwards';
-                setTimeout(() => toast.remove(), 260);
-            }, duracion);
-        }
-
-        // ========== Modal de confirmación (blanco/verde) ==========
-        function confirmarAccion(titulo, desc, callback) {
-            const modal = document.getElementById('custom-modal');
-            document.getElementById('modal-title').textContent = titulo;
-            document.getElementById('modal-description').textContent = desc;
-
-            const btnConfirm = document.getElementById('modal-confirm');
-            const btnCancel  = document.getElementById('modal-cancel');
-
-            const cleanup = () => {
-                modal.style.display = 'none';
-                btnConfirm.onclick = null;
-                btnCancel.onclick  = null;
+            // =====================================================================
+            // ESTADO DE LA APLICACIÓN (A1: centralizado, no variables globales)
+            // =====================================================================
+            const App = {
+                socket: null,
+                idSesionActual: null,
+                enviando: false,   // A2: bloquea doble envío
+                cierreIntencional: false,   // B2: distingue cierre intencional vs. error
+                intervalos: [],      // B3: guarda refs para limpiarlas si fuera necesario
+                MAX_CHARS: 4000
             };
 
-            btnCancel.onclick  = () => cleanup();
-            btnConfirm.onclick = () => { cleanup(); callback(); };
-
-            modal.style.display = 'flex';
-        }
-
-        // ========== Modal de entrada de texto ==========
-        function pedirTexto(titulo, descripcion, valorInicial, callback) {
-            const modal = document.getElementById('input-modal');
-            document.getElementById('input-modal-title').textContent       = titulo;
-            document.getElementById('input-modal-description').textContent = descripcion;
-            const campo  = document.getElementById('input-modal-field');
-            campo.value  = valorInicial || '';
-
-            const btnConfirm = document.getElementById('input-modal-confirm');
-            const btnCancel  = document.getElementById('input-modal-cancel');
-
-            const cleanup = () => {
-                modal.style.display = 'none';
-                btnConfirm.onclick = null;
-                btnCancel.onclick  = null;
-                campo.onkeydown    = null;
+            // =====================================================================
+            // REFERENCIAS AL DOM (B7: una sola referencia por elemento, reutilizada)
+            // =====================================================================
+            const DOM = {
+                chat: document.getElementById('chat'),
+                msgInput: document.getElementById('msg'),
+                sendBtn: document.getElementById('send-btn'),
+                statusText: document.getElementById('status-text'),
+                connStatus: document.getElementById('connection-status'),
+                typingIndicator: document.getElementById('typing-indicator'),
+                chatList: document.getElementById('chat-list'),
+                documentsList: document.getElementById('documents-list'),
+                uploadStatus: document.getElementById('upload-status'),
+                fileInput: document.getElementById('file-input'),
+                charCounter: document.getElementById('char-counter'),
+                sidebar: document.getElementById('sidebar'),
             };
 
-            btnCancel.onclick  = () => cleanup();
-            btnConfirm.onclick = () => {
-                const valor = campo.value.trim();
-                cleanup();
-                if (valor) callback(valor);
-            };
-            campo.onkeydown = (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); btnConfirm.click(); }
-                if (e.key === 'Escape') { cleanup(); }
-            };
+            // =====================================================================
+            // UTILIDADES
+            // =====================================================================
 
-            modal.style.display = 'flex';
-            setTimeout(() => campo.focus(), 50);
-        }
-
-        // ========== Gestión de Chats ==========
-        async function crearNuevoChat() {
-            // Generar nuevo UUID para la sesión
-            idSesionActual = crypto.randomUUID();
-
-            // Limpiar contenedor de mensajes
-            chat.innerHTML = "";
-            log("Sistema", "Nueva conversación iniciada.", "system");
-
-            // Cerrar socket anterior y abrir nuevo con el ID
-            if (socket) {
-                socket.close();
+            /**
+             * B1 / S1: Escapa texto arbitrario para inserción segura en HTML.
+             * Previene XSS cuando se muestran datos provenientes del servidor
+             * (nombres de archivos, títulos de chat, etc.) dentro de innerHTML.
+             */
+            function escHTML(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
             }
-            connectWebSocket(idSesionActual);
-        }
 
-        async function cargarListaChats() {
-            var chatList = document.getElementById("chat-list");
-            if (!chatList) return;
+            /**
+             * Limpia etiquetas <thinking> del texto del asistente antes de mostrarlo.
+             */
+            function limpiarRespuesta(texto) {
+                if (!texto) return '';
+                return texto.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+            }
 
-            try {
-                const response = await fetch("/api/chats");
-                if (!response.ok) throw new Error("Error cargando chats");
+            /**
+             * U7: Persiste el estado del sidebar en localStorage.
+             */
+            function guardarEstadoSidebar(collapsed) {
+                try { localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0'); } catch (_) { }
+            }
 
-                const sesiones = await response.json();
-                chatList.innerHTML = "";
+            function recuperarEstadoSidebar() {
+                try { return localStorage.getItem('sidebar_collapsed') === '1'; } catch (_) { return false; }
+            }
 
-                if (sesiones.length === 0) {
-                    chatList.innerHTML = '<p style="color: var(--text-secondary); text-align: center; font-size: 13px;">Sin chats previos</p>';
-                    return;
+            function formatBytes(bytes) {
+                if (!bytes) return '0 B';
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            }
+
+            // =====================================================================
+            // SISTEMA DE TOASTS
+            // =====================================================================
+            function mostrarToast(mensaje, tipo = 'error', duracion = 3500) {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                toast.className = `toast ${tipo}`;
+                const iconos = { success: '✓', error: '✕', info: 'ℹ' };
+                // escHTML aquí también para que el mensaje del toast sea seguro
+                toast.innerHTML = `<span style="font-size:15px;">${iconos[tipo] || '!'}</span><span>${escHTML(mensaje)}</span>`;
+                container.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.animation = 'toast-out 0.25s ease forwards';
+                    setTimeout(() => toast.remove(), 260);
+                }, duracion);
+            }
+
+            // =====================================================================
+            // SISTEMA DE MODALES
+            // =====================================================================
+            function confirmarAccion(titulo, desc, callback) {
+                const modal = document.getElementById('custom-modal');
+                const btnConf = document.getElementById('modal-confirm');
+                const btnCanc = document.getElementById('modal-cancel');
+
+                // B1: textContent en lugar de innerHTML — seguro contra XSS
+                document.getElementById('modal-title').textContent = titulo;
+                document.getElementById('modal-description').textContent = desc;
+
+                const cleanup = () => {
+                    modal.style.display = 'none';
+                    btnConf.onclick = null;
+                    btnCanc.onclick = null;
+                };
+
+                btnCanc.onclick = () => cleanup();
+                btnConf.onclick = () => { cleanup(); callback(); };
+                modal.style.display = 'flex';
+            }
+
+            function pedirTexto(titulo, descripcion, valorInicial, callback) {
+                const modal = document.getElementById('input-modal');
+                const campo = document.getElementById('input-modal-field');
+                const btnConf = document.getElementById('input-modal-confirm');
+                const btnCanc = document.getElementById('input-modal-cancel');
+
+                // B1: textContent en lugar de innerHTML
+                document.getElementById('input-modal-title').textContent = titulo;
+                document.getElementById('input-modal-description').textContent = descripcion;
+                campo.value = valorInicial || '';
+
+                const cleanup = () => {
+                    modal.style.display = 'none';
+                    btnConf.onclick = null;
+                    btnCanc.onclick = null;
+                    campo.onkeydown = null;
+                };
+
+                btnCanc.onclick = () => cleanup();
+                btnConf.onclick = () => {
+                    const valor = campo.value.trim();
+                    cleanup();
+                    if (valor) callback(valor);
+                };
+                campo.onkeydown = (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); btnConf.click(); }
+                    if (e.key === 'Escape') { cleanup(); }
+                };
+
+                modal.style.display = 'flex';
+                setTimeout(() => campo.focus(), 50);
+            }
+
+            // =====================================================================
+            // MENSAJES EN EL CHAT
+            // =====================================================================
+            function scrollToBottom() {
+                DOM.chat.scrollTop = DOM.chat.scrollHeight;
+            }
+
+            function log(sender, message, type) {
+                const row = document.createElement('div');
+                row.className = 'message-row';
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+
+                if (type === 'user') {
+                    row.classList.add('user-row');
+                    bubble.classList.add('user-bubble');
+                    // B1: textContent para mensajes del usuario — nunca innerHTML con input del usuario
+                    bubble.textContent = message;
+
+                } else if (type === 'assistant') {
+                    row.classList.add('ai-row');
+                    bubble.classList.add('ai-bubble');
+                    /*
+                     * S2: DOMPurify.sanitize() aplicado ANTES de insertar el HTML
+                     * generado por marked.parse(). Esto bloquea <script>, <img onerror=...>
+                     * y cualquier vector XSS que el LLM pudiera devolver incrustado
+                     * en su respuesta Markdown.
+                     */
+                    const htmlBruto = marked.parse(message);
+                    bubble.innerHTML = DOMPurify.sanitize(htmlBruto);
+
+                } else if (type === 'system') {
+                    row.style.justifyContent = 'center';
+                    bubble.className = 'system-bubble';
+                    bubble.textContent = message;
+
+                } else if (type === 'error') {
+                    row.style.justifyContent = 'center';
+                    bubble.className = 'system-bubble error-bubble';
+                    bubble.textContent = message;
                 }
 
-                sesiones.forEach(sesion => {
-                    var item = document.createElement("li");
-                    item.className = "chat-item";
-                    if (idSesionActual === sesion.sessionId) {
-                        item.classList.add("active");
+                row.appendChild(bubble);
+                DOM.chat.appendChild(row);
+                scrollToBottom();
+            }
+
+            function showTyping() {
+                DOM.typingIndicator.style.display = 'flex';
+                scrollToBottom();
+            }
+
+            function hideTyping() {
+                DOM.typingIndicator.style.display = 'none';
+            }
+
+            // =====================================================================
+            // WEBSOCKET
+            // =====================================================================
+            function connectWebSocket(idSesion) {
+                const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                App.socket = new WebSocket(`${protocol}//${location.host}/chat/${idSesion}`);
+
+                App.socket.onopen = () => {
+                    DOM.statusText.textContent = 'Conectado';
+                    DOM.connStatus.className = 'connected';
+                };
+
+                App.socket.onmessage = (event) => {
+                    hideTyping();
+                    setEnviando(false); // A2: re-habilita el input al recibir respuesta
+
+                    try {
+                        const frame = JSON.parse(event.data);
+                        if (frame.type === 'session_ready') return;
+                    } catch (_) { /* respuesta normal del asistente */ }
+
+                    const textoLimpio = limpiarRespuesta(event.data);
+                    log('Asistente', textoLimpio || 'Procesando...', 'assistant');
+                    cargarListaChats();
+                };
+
+                App.socket.onclose = () => {
+                    DOM.statusText.textContent = 'Desconectado';
+                    DOM.connStatus.className = 'disconnected';
+                    // B2: solo muestra error si el cierre NO fue intencional
+                    if (!App.cierreIntencional) {
+                        log('Sistema', 'Conexión cerrada inesperadamente.', 'error');
+                    }
+                    App.cierreIntencional = false; // reset del flag
+                };
+
+                App.socket.onerror = () => {
+                    log('Sistema', 'Error de conexión.', 'error');
+                    hideTyping();
+                    setEnviando(false);
+                };
+            }
+
+            // =====================================================================
+            // A2: GESTIÓN DEL ESTADO "ENVIANDO"
+            // =====================================================================
+            function setEnviando(estado) {
+                App.enviando = estado;
+                DOM.sendBtn.disabled = estado;
+                DOM.msgInput.disabled = estado;
+            }
+
+            // =====================================================================
+            // ENVÍO DE MENSAJES
+            // =====================================================================
+            function send() {
+                const text = DOM.msgInput.value.trim();
+
+                // B6: Bloqueo de doble envío — si ya está enviando, no hace nada
+                if (!text || App.enviando) return;
+
+                if (App.socket && App.socket.readyState === WebSocket.OPEN) {
+                    App.socket.send(text);
+                    log('Usuario', text, 'user');
+                    DOM.msgInput.value = '';
+                    autoResize(DOM.msgInput); // resetea la altura del textarea
+                    actualizarContador();
+                    setEnviando(true);        // A2: deshabilita input hasta recibir respuesta
+                    showTyping();
+                } else {
+                    log('Sistema', 'No hay conexión activa. Iniciando nueva...', 'error');
+                    crearNuevoChat();
+                }
+            }
+
+            // =====================================================================
+            // U5: AUTO-RESIZE DEL TEXTAREA
+            // =====================================================================
+            function autoResize(el) {
+                el.style.height = 'auto';
+                el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+            }
+
+            // =====================================================================
+            // U6: CONTADOR DE CARACTERES
+            // =====================================================================
+            function actualizarContador() {
+                const len = DOM.msgInput.value.length;
+                if (len === 0) {
+                    DOM.charCounter.textContent = '';
+                    DOM.charCounter.className = '';
+                    return;
+                }
+                DOM.charCounter.textContent = `${len} / ${App.MAX_CHARS}`;
+                if (len > App.MAX_CHARS * 0.95) {
+                    DOM.charCounter.className = 'danger';
+                } else if (len > App.MAX_CHARS * 0.80) {
+                    DOM.charCounter.className = 'warning';
+                } else {
+                    DOM.charCounter.className = '';
+                }
+            }
+
+            // =====================================================================
+            // GESTIÓN DE CHATS
+            // =====================================================================
+            async function crearNuevoChat() {
+                App.idSesionActual = crypto.randomUUID();
+                DOM.chat.innerHTML = '';
+                log('Sistema', 'Nueva conversación iniciada.', 'system');
+
+                // B2: marcamos el cierre como intencional ANTES de llamar a close()
+                if (App.socket) {
+                    App.cierreIntencional = true;
+                    App.socket.close();
+                }
+                connectWebSocket(App.idSesionActual);
+            }
+
+            async function cargarListaChats() {
+                if (!DOM.chatList) return;
+                try {
+                    const response = await fetch('/api/chats');
+                    if (!response.ok) throw new Error('Error cargando chats');
+                    const sesiones = await response.json();
+
+                    DOM.chatList.innerHTML = '';
+
+                    if (sesiones.length === 0) {
+                        DOM.chatList.innerHTML = '<p style="color: var(--text-secondary); text-align: center; font-size: 13px;">Sin chats previos</p>';
+                        return;
                     }
 
-                    // Título y Fecha/Hora formateada
-                    const fecha = new Date(sesion.updatedAt);
-                    const fechaFormateada = fecha.toLocaleString();
-                    const tituloDisplay = sesion.titulo || "Sin nombre";
+                    sesiones.forEach(sesion => {
+                        const item = document.createElement('li');
+                        item.className = 'chat-item';
+                        if (App.idSesionActual === sesion.sessionId) item.classList.add('active');
 
-                    item.innerHTML = `
-                        <div class="chat-info" onclick="cargarHistorialChat('${sesion.sessionId}')" style="flex: 1; display: flex; align-items: center; gap: 10px; overflow: hidden;">
+                        const fecha = new Date(sesion.updatedAt);
+                        const fechaFormateada = fecha.toLocaleString();
+                        /*
+                         * B1/S1: escHTML() en todos los valores del servidor antes de
+                         * interpolarlos en innerHTML. Previene XSS si un título contiene
+                         * caracteres especiales HTML o scripts.
+                         *
+                         * B4: los callbacks de renombrar/borrar se registran vía addEventListener
+                         * en lugar de atributos onclick con strings interpoladas.
+                         * Esto elimina el problema de las comillas simples rotas.
+                         */
+                        const tituloSafe = escHTML(sesion.titulo || 'Sin nombre');
+                        const fechaSafe = escHTML(fechaFormateada);
+
+                        item.innerHTML = `
+                        <div class="chat-info" style="flex: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; cursor: pointer;">
                             <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="18" width="18" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                             </svg>
                             <div style="display: flex; flex-direction: column; overflow: hidden;">
-                                <span class="chat-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${tituloDisplay}</span>
-                                <span class="chat-meta" style="font-size: 11px; color: var(--text-secondary);">${fechaFormateada}</span>
+                                <span class="chat-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${tituloSafe}</span>
+                                <span class="chat-meta"  style="font-size: 11px; color: var(--text-secondary);">${fechaSafe}</span>
                             </div>
                         </div>
                         <div class="chat-actions" style="display: flex; gap: 5px; opacity: 0.7;">
-                            <button onclick="event.stopPropagation(); renombrarChat('${sesion.sessionId}', '${tituloDisplay}')" title="Renombrar" style="background: none; border: none; cursor: pointer; padding: 4px;">✏️</button>
-                            <button onclick="event.stopPropagation(); borrarChat('${sesion.sessionId}')" title="Borrar" style="background: none; border: none; cursor: pointer; padding: 4px;">🗑️</button>
+                            <button class="btn-rename" title="Renombrar" style="background: none; border: none; cursor: pointer; padding: 4px;">✏️</button>
+                            <button class="btn-delete" title="Borrar"    style="background: none; border: none; cursor: pointer; padding: 4px;">🗑️</button>
                         </div>
                     `;
-                    chatList.appendChild(item);
-                });
-            } catch (error) {
-                console.error("Error en cargarListaChats:", error);
-            }
-        }
 
-        async function renombrarChat(id, tituloActual) {
-            pedirTexto(
-                'Renombrar conversación',
-                'Introduce el nuevo nombre para esta conversación:',
-                tituloActual,
-                async (nuevoTitulo) => {
-                    if (nuevoTitulo === tituloActual) return;
-                    try {
-                        const response = await fetch(`/api/chats/${id}/titulo`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(nuevoTitulo)
+                        // B4: event listeners en lugar de onclick inline con strings interpoladas
+                        item.querySelector('.chat-info').addEventListener('click', () =>
+                            cargarHistorialChat(sesion.sessionId));
+                        item.querySelector('.btn-rename').addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            // B4: el título real (sin escaping) va al modal de edición
+                            renombrarChat(sesion.sessionId, sesion.titulo || 'Sin nombre');
                         });
-                        if (response.ok) {
-                            mostrarToast('Conversación renombrada.', 'success');
-                            cargarListaChats();
-                        } else {
-                            console.error('Error al renombrar el chat. HTTP', response.status);
-                            mostrarToast('No se pudo renombrar la conversación.', 'error');
-                        }
-                    } catch (error) {
-                        console.error('Error en renombrarChat:', error);
-                        mostrarToast('Error de red al renombrar.', 'error');
-                    }
+                        item.querySelector('.btn-delete').addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            borrarChat(sesion.sessionId);
+                        });
+
+                        DOM.chatList.appendChild(item);
+                    });
+                } catch (error) {
+                    console.error('Error en cargarListaChats:', error);
                 }
-            );
-        }
+            }
 
-        async function borrarChat(id) {
-            confirmarAccion(
-                'Eliminar conversación',
-                '¿Estás seguro de que deseas eliminar esta conversación? Esta acción no se puede deshacer.',
-                async () => {
-                    try {
-                        const response = await fetch(`/api/chats/${id}`, { method: 'DELETE' });
-                        if (response.ok || response.status === 204) {
-                            if (id === idSesionActual) crearNuevoChat();
-                            cargarListaChats();
-                            mostrarToast('Conversación eliminada.', 'success');
-                        } else {
-                            console.error('Error al borrar el chat. HTTP', response.status);
-                            mostrarToast('No se pudo eliminar la conversación.', 'error');
-                        }
-                    } catch (error) {
-                        console.error('Error en borrarChat:', error);
-                        mostrarToast('Error de red al eliminar la conversación.', 'error');
-                    }
-                }
-            );
-        }
-
-        async function cargarHistorialChat(id) {
-            try {
-                const res = await fetch(`/api/chats/${id}/historial`);
-                const history = await res.json();
-
-                idSesionActual = id;
-                const chatDiv = document.getElementById("chat");
-                chatDiv.innerHTML = "";
-
-                history.forEach(msg => {
-                    if (msg.type === "SYSTEM") return;
-
-                    let texto = msg.text || (msg.contents && msg.contents[0] ? msg.contents[0].text : "");
-                    if (!texto || texto === "null") return;
-
-                    if (msg.type === "USER") {
-                        // TIJERA MULTIPLE: Cortamos por cualquier posible inicio de RAG
-                        const delimitadores = [
-                            "Utiliza los fragmentos",
-                            "--- Instrucciones",
-                            "Responde EXCLUSIVAMENTE",
-                            "content:",
-                            "\n\nContexto:"
-                        ];
-
-                        delimitadores.forEach(d => {
-                            if (texto.includes(d)) {
-                                texto = texto.split(d)[0].trim();
+            async function renombrarChat(id, tituloActual) {
+                pedirTexto(
+                    'Renombrar conversación',
+                    'Introduce el nuevo nombre para esta conversación:',
+                    tituloActual,
+                    async (nuevoTitulo) => {
+                        if (nuevoTitulo === tituloActual) return;
+                        try {
+                            const response = await fetch(`/api/chats/${id}/titulo`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(nuevoTitulo)
+                            });
+                            if (response.ok) {
+                                mostrarToast('Conversación renombrada.', 'success');
+                                cargarListaChats();
+                            } else {
+                                mostrarToast('No se pudo renombrar la conversación.', 'error');
                             }
-                        });
-
-                        log("Usuario", texto, "user");
-                    } else {
-                        // Si la respuesta de la IA es un pensamiento técnico
-                        texto = limpiarRespuesta(texto);
-                        log("Asistente", texto || "Procesando...", "assistant");
-                    }
-                });
-
-                if (socket) socket.close();
-                connectWebSocket(id); // Corregido: connectWebSocket en lugar de conectarWebSocket
-
-                log("Sistema", "Historial de conversación recuperado.", "system");
-            } catch (e) {
-                console.error(e);
-                log("Sistema", "Error al recuperar el historial.", "error");
-            }
-        }
-
-        // Configurar marked.js
-        marked.setOptions({
-            breaks: true,
-            gfm: true
-        });
-
-        // ========== WebSocket para Chat ==========
-        var socket;
-        var chat = document.getElementById("chat");
-        var statusText = document.getElementById("status-text");
-        var connectionStatus = document.getElementById("connection-status");
-        var typingIndicator = document.getElementById("typing-indicator");
-
-        function connectWebSocket(idSesion) {
-            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            // Usar el sessionId en la URL como requiere el nuevo backend
-            socket = new WebSocket(protocol + "//" + location.host + "/chat/" + idSesion);
-
-            socket.onopen = function () {
-                statusText.textContent = "Conectado";
-                connectionStatus.className = "connected";
-                // No mostrar log de sistema cada vez que conectamos para no ensuciar
-            };
-
-            socket.onmessage = function (event) {
-                hideTyping();
-                // Filtrar el frame de confirmación enviado por @OnOpen en el backend
-                // para que no aparezca como un mensaje del asistente en el chat.
-                try {
-                    const frame = JSON.parse(event.data);
-                    if (frame.type === 'session_ready') return;
-                } catch (_) { /* no es JSON → es una respuesta normal del asistente */ }
-
-                let textoLimpio = limpiarRespuesta(event.data);
-                log('Asistente', textoLimpio || 'Procesando...', 'assistant');
-                cargarListaChats();
-            };
-
-            socket.onclose = function () {
-                statusText.textContent = "Desconectado";
-                connectionStatus.className = "disconnected";
-
-                // Solo reconectar si no es un cierre intencionado por cambio de chat
-                // En una app real controlaríamos el código de cierre, aquí simplificamos
-            };
-
-            socket.onerror = function (error) {
-                log("Sistema", "Error de conexión.", "error");
-                hideTyping();
-            };
-        }
-
-        function showTyping() {
-            typingIndicator.style.display = 'flex';
-            scrollToBottom();
-        }
-
-        function hideTyping() {
-            typingIndicator.style.display = 'none';
-        }
-
-        function scrollToBottom() {
-            const chatContainer = document.getElementById("chat");
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-
-        function send() {
-            var msgInput = document.getElementById("msg");
-            var text = msgInput.value.trim();
-
-            if (text !== "") {
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send(text);
-                    log("Usuario", text, "user");
-                    msgInput.value = "";
-                    showTyping();
-                } else {
-                    log("Sistema", "No hay conexión activa. Iniciando nueva...", "error");
-                    crearNuevoChat();
-                }
-            }
-        }
-
-        function log(sender, message, type) {
-            var row = document.createElement("div");
-            row.className = "message-row";
-
-            var bubble = document.createElement("div");
-            bubble.className = "message-bubble";
-
-            if (type === "user") {
-                row.classList.add("user-row");
-                bubble.classList.add("user-bubble");
-                bubble.textContent = message; // Raw text for user
-            } else if (type === "assistant") {
-                row.classList.add("ai-row");
-                bubble.classList.add("ai-bubble");
-                // Parse Markdown for assistant response
-                bubble.innerHTML = marked.parse(message);
-            } else if (type === "system") {
-                row.style.justifyContent = "center";
-                bubble.className = "system-bubble";
-                bubble.textContent = message;
-            } else if (type === "error") {
-                row.style.justifyContent = "center";
-                bubble.className = "system-bubble error-bubble";
-                bubble.textContent = message;
-            }
-
-            row.appendChild(bubble);
-            chat.appendChild(row);
-
-            // Auto scroll
-            scrollToBottom();
-        }
-
-        // ========== Gestión de Documentos ==========
-        function toggleSidebar() {
-            document.getElementById("sidebar").classList.toggle("collapsed");
-        }
-
-        function triggerFileInput() {
-            document.getElementById("file-input").click();
-        }
-
-        document.getElementById("file-input").addEventListener("change", async function (e) {
-            var file = e.target.files[0];
-            if (!file) return;
-
-            var uploadStatus = document.getElementById("upload-status");
-            uploadStatus.innerHTML = '<div class="spinner"></div> Subiendo...';
-
-            var formData = new FormData();
-            formData.append("file", file);
-
-            var metadatos = {
-                "autor": "Usuario",
-                "fecha": new Date().toISOString()
-            };
-            formData.append("metadatos", JSON.stringify(metadatos));
-
-            try {
-                var response = await fetch("/api/documentos/upload", {
-                    method: "POST",
-                    body: formData
-                });
-
-                if (response.ok) {
-                    uploadStatus.innerHTML = "<span style='color: var(--primary-color)'>Subido correctamente</span>";
-
-                    // Recargar lista de documentos
-                    fetchDocuments();
-                } else {
-                    var error = await response.json();
-                    uploadStatus.innerHTML = "<span style='color: var(--danger-color)'>Error: " + error.error + "</span>";
-                }
-            } catch (error) {
-                uploadStatus.innerHTML = "<span style='color: var(--danger-color)'>Error de conexión</span>";
-            }
-
-            // Limpiar input y estado
-            e.target.value = "";
-            setTimeout(() => {
-                uploadStatus.innerHTML = "";
-            }, 3000);
-        });
-
-        async function deleteDocument(fileName) {
-            confirmarAccion(
-                'Eliminar documento',
-                `¿Estás seguro de que deseas eliminar el documento "${fileName}"? Esta acción no se puede deshacer.`,
-                async () => {
-                    try {
-                        const response = await fetch('/api/documentos/' + encodeURIComponent(fileName), {
-                            method: 'DELETE'
-                        });
-                        if (response.ok || response.status === 200 || response.status === 204) {
-                            mostrarToast(`Documento "${fileName}" eliminado.`, 'success');
-                            fetchDocuments();
-                        } else {
-                            console.error('Error al eliminar el documento. HTTP', response.status);
-                            mostrarToast('No se pudo eliminar el documento.', 'error');
+                        } catch (error) {
+                            console.error('Error en renombrarChat:', error);
+                            mostrarToast('Error de red al renombrar.', 'error');
                         }
-                    } catch (error) {
-                        console.error('Error al eliminar documento:', error);
-                        mostrarToast('Error de red al intentar eliminar.', 'error');
                     }
+                );
+            }
+
+            async function borrarChat(id) {
+                confirmarAccion(
+                    'Eliminar conversación',
+                    '¿Estás seguro de que deseas eliminar esta conversación? Esta acción no se puede deshacer.',
+                    async () => {
+                        try {
+                            const response = await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+                            if (response.ok || response.status === 204) {
+                                if (id === App.idSesionActual) crearNuevoChat();
+                                cargarListaChats();
+                                mostrarToast('Conversación eliminada.', 'success');
+                            } else {
+                                mostrarToast('No se pudo eliminar la conversación.', 'error');
+                            }
+                        } catch (error) {
+                            console.error('Error en borrarChat:', error);
+                            mostrarToast('Error de red al eliminar la conversación.', 'error');
+                        }
+                    }
+                );
+            }
+
+            async function cargarHistorialChat(id) {
+                // B5: Deshabilitar input durante la carga del historial
+                setEnviando(true);
+
+                // U1: Indicador de carga mientras llega el historial
+                DOM.chat.innerHTML = `
+                <div class="historial-loading">
+                    <div class="spinner"></div>
+                    <span>Cargando historial...</span>
+                </div>`;
+
+                try {
+                    const res = await fetch(`/api/chats/${id}/historial`);
+                    const history = await res.json();
+
+                    App.idSesionActual = id;
+                    DOM.chat.innerHTML = '';
+
+                    history.forEach(msg => {
+                        if (msg.type === 'SYSTEM') return;
+
+                        let texto = msg.text || (msg.contents && msg.contents[0] ? msg.contents[0].text : '');
+                        if (!texto || texto === 'null') return;
+
+                        if (msg.type === 'USER') {
+                            const delimitadores = [
+                                'Utiliza los fragmentos', '--- Instrucciones',
+                                'Responde EXCLUSIVAMENTE', 'content:', '\n\nContexto:'
+                            ];
+                            delimitadores.forEach(d => {
+                                if (texto.includes(d)) texto = texto.split(d)[0].trim();
+                            });
+                            log('Usuario', texto, 'user');
+                        } else {
+                            texto = limpiarRespuesta(texto);
+                            log('Asistente', texto || 'Procesando...', 'assistant');
+                        }
+                    });
+
+                    // B2: cierre intencional antes de abrir nuevo socket
+                    if (App.socket) {
+                        App.cierreIntencional = true;
+                        App.socket.close();
+                    }
+                    connectWebSocket(id);
+                    log('Sistema', 'Historial de conversación recuperado.', 'system');
+
+                } catch (e) {
+                    console.error(e);
+                    DOM.chat.innerHTML = '';
+                    log('Sistema', 'Error al recuperar el historial.', 'error');
+                } finally {
+                    // B5: re-habilitar input siempre, aunque haya fallado la carga
+                    setEnviando(false);
                 }
-            );
-        }
+            }
 
-        async function fetchDocuments() {
-            try {
-                var response = await fetch("/api/documentos");
-                if (!response.ok) {
-                    throw new Error("HTTP " + response.status);
-                }
-                var documentos = await response.json();
+            // =====================================================================
+            // GESTIÓN DE DOCUMENTOS
+            // =====================================================================
+            async function fetchDocuments() {
+                try {
+                    const response = await fetch('/api/documentos');
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    const documentos = await response.json();
 
-                var list = document.getElementById("documents-list");
-
-                if (!documentos || documentos.length === 0) {
-                    list.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px; font-size: 13px;">No hay documentos cargados</p>';
-                    return;
-                }
-
-                list.innerHTML = "";
-
-                documentos.forEach(doc => {
-                    var item = document.createElement("div");
-                    item.className = "document-item";
-
-                    var cleanName = typeof doc === "string" ? doc : (doc.nombre || doc.fileName || doc.id || "Documento");
-                    var tipoDoc = "DOC";
-
-                    if (typeof doc === "object" && (doc.tipo || doc.contentType || doc.mimeType)) {
-                        var mime = doc.tipo || doc.contentType || doc.mimeType;
-                        tipoDoc = mime.split('/').pop().toUpperCase();
-                        if (tipoDoc.includes("WORDPROCESSINGML")) tipoDoc = "DOCX";
-                    } else if (cleanName.includes('.')) {
-                        tipoDoc = cleanName.split('.').pop().toUpperCase();
+                    if (!documentos || documentos.length === 0) {
+                        DOM.documentsList.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px; font-size: 13px;">No hay documentos cargados</p>';
+                        return;
                     }
 
-                    var docSize = typeof doc === "string" ? 0 : (doc.tamanio_bytes || doc.size || doc.sizeBytes || 0);
+                    DOM.documentsList.innerHTML = '';
 
-                    item.innerHTML = `
-                    <div class="doc-info" title="${cleanName}">
-                        <div class="name">${cleanName}</div>
-                        <div class="meta">${tipoDoc} • ${formatBytes(docSize)}</div>
-                    </div>
-                    <button class="delete-btn" onclick="deleteDocument('${cleanName}')" title="Eliminar documento">
-                        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="16" width="16" xmlns="http://www.w3.org/2000/svg"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                    </button>
+                    documentos.forEach(doc => {
+                        const item = document.createElement('div');
+                        item.className = 'document-item';
+
+                        const cleanName = typeof doc === 'string' ? doc : (doc.nombre || doc.fileName || doc.id || 'Documento');
+                        let tipoDoc = 'DOC';
+
+                        if (typeof doc === 'object' && (doc.tipo || doc.contentType || doc.mimeType)) {
+                            const mime = doc.tipo || doc.contentType || doc.mimeType;
+                            tipoDoc = mime.split('/').pop().toUpperCase();
+                            if (tipoDoc.includes('WORDPROCESSINGML')) tipoDoc = 'DOCX';
+                        } else if (cleanName.includes('.')) {
+                            tipoDoc = cleanName.split('.').pop().toUpperCase();
+                        }
+
+                        const docSize = typeof doc === 'string' ? 0 : (doc.tamanio_bytes || doc.size || doc.sizeBytes || 0);
+
+                        /*
+                         * B1/S1: escHTML() en cleanName antes de interpolarlo.
+                         * El botón de borrar usa addEventListener, no onclick inline,
+                         * para evitar la inyección de código a través del nombre del archivo.
+                         */
+                        item.innerHTML = `
+                        <div class="doc-info" title="${escHTML(cleanName)}">
+                            <div class="name">${escHTML(cleanName)}</div>
+                            <div class="meta">${escHTML(tipoDoc)} • ${escHTML(formatBytes(docSize))}</div>
+                        </div>
+                        <button class="delete-btn" title="Eliminar documento">
+                            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="16" width="16" xmlns="http://www.w3.org/2000/svg">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                        </button>
                     `;
-                    list.appendChild(item);
+
+                        // B1/B4: addEventListener con el valor real — sin interpolación en onclick
+                        item.querySelector('.delete-btn').addEventListener('click', () =>
+                            deleteDocument(cleanName));
+
+                        DOM.documentsList.appendChild(item);
+                    });
+                } catch (error) {
+                    console.error('Error cargando documentos:', error);
+                    DOM.documentsList.innerHTML = '<p style="color: var(--danger-color); text-align: center; padding: 20px; font-size: 13px;">Error al cargar documentos</p>';
+                }
+            }
+
+            async function deleteDocument(fileName) {
+                // B1: confirmarAccion usa textContent internamente — seguro
+                confirmarAccion(
+                    'Eliminar documento',
+                    `¿Estás seguro de que deseas eliminar el documento "${fileName}"? Esta acción no se puede deshacer.`,
+                    async () => {
+                        try {
+                            const response = await fetch('/api/documentos/' + encodeURIComponent(fileName), {
+                                method: 'DELETE'
+                            });
+                            if (response.ok || response.status === 204) {
+                                mostrarToast(`Documento eliminado.`, 'success');
+                                fetchDocuments();
+                            } else {
+                                mostrarToast('No se pudo eliminar el documento.', 'error');
+                            }
+                        } catch (error) {
+                            console.error('Error al eliminar documento:', error);
+                            mostrarToast('Error de red al intentar eliminar.', 'error');
+                        }
+                    }
+                );
+            }
+
+            // =====================================================================
+            // SIDEBAR
+            // =====================================================================
+            function toggleSidebar() {
+                const collapsed = DOM.sidebar.classList.toggle('collapsed');
+                guardarEstadoSidebar(collapsed); // U7: persiste estado
+            }
+
+            // =====================================================================
+            // UPLOAD DE DOCUMENTOS
+            // =====================================================================
+            async function handleFileUpload(file) {
+                if (!file) return;
+
+                DOM.uploadStatus.innerHTML = '<div class="spinner"></div> Subiendo...';
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('metadatos', JSON.stringify({
+                    autor: 'Usuario',
+                    fecha: new Date().toISOString()
+                }));
+
+                try {
+                    const response = await fetch('/api/documentos/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        DOM.uploadStatus.innerHTML = "<span style='color: var(--primary-color)'>Subido correctamente</span>";
+                        fetchDocuments();
+                        mostrarToast('Documento subido correctamente.', 'success');
+                    } else {
+                        const error = await response.json();
+                        // escHTML en el mensaje de error del servidor
+                        DOM.uploadStatus.innerHTML = `<span style='color: var(--danger-color)'>Error: ${escHTML(error.error || 'desconocido')}</span>`;
+                    }
+                } catch (error) {
+                    DOM.uploadStatus.innerHTML = "<span style='color: var(--danger-color)'>Error de conexión</span>";
+                }
+
+                setTimeout(() => { DOM.uploadStatus.innerHTML = ''; }, 3000);
+            }
+
+            // =====================================================================
+            // REGISTRO DE EVENT LISTENERS (A4: todo desde JS, nada inline en HTML)
+            // =====================================================================
+            function registrarEventos() {
+                // Nuevo chat
+                document.getElementById('new-chat-btn').addEventListener('click', crearNuevoChat);
+
+                // Sidebar toggle
+                document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
+
+                // Recargar documentos
+                document.getElementById('refresh-docs-btn').addEventListener('click', fetchDocuments);
+
+                // Subir documento
+                document.getElementById('upload-btn').addEventListener('click', () => DOM.fileInput.click());
+                DOM.fileInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    await handleFileUpload(file);
+                    e.target.value = ''; // reset del input
                 });
-            } catch (error) {
-                console.error("Error cargando documentos:", error);
-                var list = document.getElementById("documents-list");
-                list.innerHTML = '<p style="color: var(--danger-color); text-align: center; padding: 20px; font-size: 13px;">Error al cargar documentos</p>';
+
+                // Envío de mensaje
+                document.getElementById('send-btn').addEventListener('click', send);
+
+                /*
+                 * A4: El listener del textarea se registra aquí, no como onkeypress en el HTML.
+                 * U5: Enter envía, Shift+Enter inserta salto de línea (comportamiento esperado).
+                 * B6: App.enviando actúa como debounce — send() no hace nada si ya está enviando.
+                 */
+                DOM.msgInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        send();
+                    }
+                });
+
+                // U5: Auto-resize del textarea
+                DOM.msgInput.addEventListener('input', () => {
+                    autoResize(DOM.msgInput);
+                    actualizarContador(); // U6
+                });
+
+                /*
+                 * U3: Shortcut global Ctrl+N (o Cmd+N en Mac) para nuevo chat.
+                 * Previene la apertura de una nueva pestaña del navegador.
+                 */
+                document.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                        e.preventDefault();
+                        crearNuevoChat();
+                    }
+                });
             }
-        }
 
-        function formatBytes(bytes) {
-            if (!bytes) return "0 B";
-            if (bytes < 1024) return bytes + " B";
-            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-            return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-        }
+            // =====================================================================
+            // INICIALIZACIÓN
+            // =====================================================================
+            window.addEventListener('load', () => {
+                // Configurar marked.js
+                marked.setOptions({ breaks: true, gfm: true });
 
-        // Inicialización
-        window.addEventListener("load", () => {
-            fetchDocuments();
-            cargarListaChats();
+                // U7: Restaurar estado del sidebar desde localStorage
+                if (recuperarEstadoSidebar()) {
+                    DOM.sidebar.classList.add('collapsed');
+                }
 
-            // Si no tenemos sesión activa, crear una nueva
-            if (!idSesionActual) {
-                crearNuevoChat();
-            }
+                registrarEventos();
+                fetchDocuments();
+                cargarListaChats();
 
-            // Recargar documentos periódicamente 
-            setInterval(fetchDocuments, 30000);
-            setInterval(cargarListaChats, 10000);
+                if (!App.idSesionActual) crearNuevoChat();
 
-            // Focus input on load
-            const inputMsg = document.getElementById("msg");
-            if (inputMsg) inputMsg.focus();
-        });
+                /*
+                 * B3: Las referencias de setInterval se guardan en App.intervalos
+                 * para poder limpiarlas con clearInterval si fuera necesario.
+                 * Los intervalos se mantienen iguales al original para no alterar comportamiento.
+                 */
+                App.intervalos.push(setInterval(fetchDocuments, 30000));
+                App.intervalos.push(setInterval(cargarListaChats, 10000));
+
+                DOM.msgInput.focus();
+            });
+
+        })(); // fin del IIFE
     </script>
 </body>
 
