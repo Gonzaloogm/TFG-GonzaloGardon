@@ -1,52 +1,62 @@
 package com.gonzalo.tfg.resource;
 
 import com.gonzalo.tfg.model.IngestionStatusEvent;
-
+import io.quarkus.logging.Log;
 import io.quarkus.websockets.next.OnOpen;
+import io.quarkus.websockets.next.OpenConnections;
 import io.quarkus.websockets.next.WebSocket;
-import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
-import io.quarkus.logging.Log;
 
-/**
- * Endpoint de WebSocket para la notificación de estados de ingestión de
- * documentos.
- * 
- * Emplea el Broadcaster Global de WebSockets Next para asegurar la entrega de
- * mensajes
- * desde hilos que no poseen contexto de petición activo.
- */
 @WebSocket(path = "/ingestion-status")
 @ApplicationScoped
 public class IngestionStatusWebSocket {
 
+    /*
+     * OpenConnections es un bean @ApplicationScoped que mantiene el registro
+     * de todas las conexiones WebSocket activas. A diferencia de
+     * WebSocketConnection
+     * (@SessionScoped), no requiere un contexto de sesión activo, por lo que
+     * puede usarse de forma segura desde hilos de ingestión o observadores CDI.
+     */
     @Inject
-    WebSocketConnection connection;
+    OpenConnections openConnections;
 
     @OnOpen
     public void onOpen() {
-        Log.info("Client connected to ingestion-status WebSocket");
+        Log.infof("Cliente conectado a /ingestion-status. Conexiones activas: %d",
+                openConnections.listAll().size());
     }
 
-    /**
-     * Observa eventos de cambio de estado de ingestión y los difunde a todos los
-     * clientes suscritos.
-     * 
-     * @param event Evento de estado disparado por DocumentIngestionService.
-     */
     public void onIngestionStatus(@Observes IngestionStatusEvent event) {
-        String json = String.format(
-                "{\"fileName\":\"%s\", \"phase\":%d, \"message\":\"%s\", \"status\":\"%s\"}",
-                event.fileName(), event.phase(), event.message(), event.status());
-
-        try {
-            // broadcast() no requiere una conexión "actual" (Self), lo que lo hace
-            // ideal para disparar mensajes desde observadores CDI.
-            connection.broadcast().sendTextAndAwait(json);
-        } catch (Exception e) {
-            Log.error("Fallo al difundir el estado de ingestión vía WebSocket", e);
+        if (openConnections.listAll().isEmpty()) {
+            Log.debugf("Sin clientes suscritos a /ingestion-status, evento descartado: fase %d", event.phase());
+            return;
         }
+
+        String json = String.format(
+                "{\"fileName\":\"%s\",\"phase\":%d,\"message\":\"%s\",\"status\":\"%s\"}",
+                escaparJson(event.fileName()),
+                event.phase(),
+                escaparJson(event.message()),
+                escaparJson(event.status()));
+
+        openConnections.listAll().forEach(conn -> {
+            try {
+                conn.sendTextAndAwait(json);
+            } catch (Exception e) {
+                Log.warnf("No se pudo notificar a la conexión %s: %s", conn.id(), e.getMessage());
+            }
+        });
+    }
+
+    private static String escaparJson(String valor) {
+        if (valor == null)
+            return "";
+        return valor.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 }

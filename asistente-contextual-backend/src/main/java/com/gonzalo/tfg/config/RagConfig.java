@@ -88,6 +88,9 @@ public class RagConfig {
     @Inject
     PostgresKeywordRetriever postgresKeywordRetriever;
 
+    @Inject
+    CustomQueryTransformer customQueryTransformer;
+
     // -------------------------------------------------------------------------
     // CONSTANTES DE CONFIGURACIÓN
     // -------------------------------------------------------------------------
@@ -355,6 +358,7 @@ public class RagConfig {
                 .build();
 
         return DefaultRetrievalAugmentor.builder()
+                .queryTransformer(customQueryTransformer)
                 .queryRouter(enrutadorConsultas)
                 .contentAggregator(agregadorRRF)
                 .contentInjector(inyectorContenido)

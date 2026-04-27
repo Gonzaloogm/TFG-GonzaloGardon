@@ -14,35 +14,33 @@ import io.smallrye.common.annotation.Blocking;
 @Blocking
 public class ChatWebSocket {
 
-    private final AsistenteService asistenteService;
-
     @Inject
-    WebSocketConnection conexion;
-
-    public ChatWebSocket(AsistenteService asistenteService) {
-        this.asistenteService = asistenteService;
-    }
+    AsistenteService asistenteService;
 
     /*
-     * Al abrir la conexión WebSocket envía al cliente el sessionId canónico
-     * (el del path param), que es exactamente la clave primaria en chat_sessions.
-     * Esto evita que el frontend use connection.id() — un UUID interno de Quarkus
-     * que difiere en cada conexión y nunca coincide con la clave de la BD.
+     * CORRECCIÓN: WebSocketConnection ya NO se inyecta como campo @SessionScoped.
+     *
+     * El problema original: al inyectar WebSocketConnection como campo de la clase,
+     * Quarkus crea un proxy @SessionScoped visible en todo el contexto CDI de la
+     * aplicación. Cuando una petición REST (DELETE /api/chats/{id}) se ejecuta sin
+     * sesión WebSocket activa, el proxy no puede resolverse y devuelve su
+     * toString()
+     * —un RequestContextState— como valor, que se propagaba hasta ChatService y la
+     * BD.
+     *
+     * La solución es recibir WebSocketConnection como parámetro de los métodos
+     * 
+     * @OnOpen y @OnTextMessage. Quarkus WebSockets Next lo inyecta automáticamente
+     * en ese caso sin crear un proxy @SessionScoped global.
      */
+
     @OnOpen
-    public String alAbrir(@PathParam("sessionId") String sessionId) {
+    public String alAbrir(@PathParam("sessionId") String sessionId, WebSocketConnection conexion) {
         Log.infof("WebSocket abierto. sessionId canónico: %s | connectionId interno: %s",
                 sessionId, conexion.id());
         return "{\"type\":\"session_ready\",\"sessionId\":\"" + sessionId + "\"}";
     }
 
-    /*
-     * Gestiona la recepción de mensajes de texto desde el cliente.
-     *
-     * @param sessionId Identificador de la sesión de chat (clave primaria en BD).
-     * @param mensaje   Contenido textual de la petición del usuario.
-     * @return Respuesta del motor de IA sin trazas de razonamiento interno.
-     */
     @OnTextMessage
     public String alRecibirMensaje(@PathParam("sessionId") String sessionId, String mensaje) {
         String respuesta = asistenteService.chat(sessionId, mensaje);

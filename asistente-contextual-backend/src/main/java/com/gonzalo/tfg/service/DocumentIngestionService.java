@@ -6,6 +6,7 @@ import com.gonzalo.tfg.model.DocumentoDTO;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.DocumentParser;
 import dev.langchain4j.data.document.DocumentSplitter;
+import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
 import dev.langchain4j.data.document.parser.TextDocumentParser;
 import dev.langchain4j.data.document.parser.apache.tika.ApacheTikaDocumentParser;
@@ -269,6 +270,34 @@ public class DocumentIngestionService {
 
             // Extracción pasiva de metadatos (Graph-Lite)
             String contenidoLower = documento.text().toLowerCase();
+            String extension = obtenerExtension(nombreOriginal).toLowerCase();
+
+            // Preservación de Metadatos por Tipo de Archivo
+            if (extension.equals("md")) {
+                // Extraer título de cabecera en Markdown (Ej: # Mi Titulo)
+                Matcher mTitle = Pattern.compile("^#\\s+(.*)", Pattern.MULTILINE).matcher(documento.text());
+                if (mTitle.find()) {
+                    String titulo = mTitle.group(1).trim();
+                    documento.metadata().put("titulo_markdown", titulo);
+                    metadatosMap.put("titulo_markdown", titulo);
+                }
+            }
+            
+            // Extraer metadatos específicos de Apache Tika (ej. Author de .docx, title)
+            String[] clavesTika = {"Author", "creator", "title"};
+            for (String key : clavesTika) {
+                if (documento.metadata().containsKey(key)) {
+                    String val = documento.metadata().getString(key);
+                    if (val != null && !val.isBlank()) {
+                        String cleanKey = key.toLowerCase();
+                        if (!metadatosMap.containsKey(cleanKey)) {
+                            // Reemplazar caracteres nulos que rompen JSONB
+                            metadatosMap.put(cleanKey, val.replace("\u0000", ""));
+                        }
+                    }
+                }
+            }
+
             Set<String> tecnologiasEncontradas = TECH_STACK.stream()
                     .filter(contenidoLower::contains)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -281,21 +310,23 @@ public class DocumentIngestionService {
 
             if (!tecnologiasEncontradas.isEmpty()) {
                 String techs = String.join(", ", tecnologiasEncontradas);
-                documento.metadata().put("tecnologias", techs);
                 metadatosMap.put("tecnologias", techs);
             }
             if (!fechasEncontradas.isEmpty()) {
                 String dates = String.join(", ", fechasEncontradas);
-                documento.metadata().put("fechas", dates);
                 metadatosMap.put("fechas", dates);
             }
 
-            // Propagación de metadatos al objeto Document
-            metadatosMap.forEach((clave, valor) -> documento.metadata().put(clave, valor));
+            // Propagación de metadatos a un objeto Document limpio
+            // Esto evita que metadatos extraños de Tika (con caracteres nulos o formatos raros) 
+            // rompan el driver de pgvector.
+            Map<String, Object> metadatosLimpios = new HashMap<>(metadatosMap);
+            
+            Document documentoLimpio = Document.from(documento.text(), Metadata.from(metadatosLimpios));
 
             // Fragmentación semántica
             DocumentSplitter fragmentador = DocumentSplitters.recursive(TAMANIO_FRAGMENTO, SOLAPAMIENTO_FRAGMENTO);
-            List<TextSegment> segmentos = fragmentador.split(documento);
+            List<TextSegment> segmentos = fragmentador.split(documentoLimpio);
 
             // Fase 3: Enriquecimiento y Generación de Embeddings
             notificar(nombreOriginal, 3, "Generando embeddings vectoriales...", "processing");
@@ -527,14 +558,13 @@ public class DocumentIngestionService {
     private DocumentParser crearAnalizador(String nombreFichero) {
         String extension = obtenerExtension(nombreFichero).toLowerCase();
 
-        return switch (extension) {
-            case "txt", "md" -> new TextDocumentParser();
-            case "pdf", "docx", "doc" -> new ApacheTikaDocumentParser();
-            default -> {
-                Log.warnf("Extensión no reconocida: '%s'. Se aplica el analizador genérico Apache Tika.", extension);
-                yield new ApacheTikaDocumentParser();
-            }
-        };
+        if (extension.equals("txt") || extension.equals("md")) {
+            // Forzar UTF-8 para archivos de texto plano
+            return new TextDocumentParser(java.nio.charset.StandardCharsets.UTF_8);
+        }
+
+        // Tika Document Parser universal para auto-detectar MIME types (PDF, DOCX, HTML, etc)
+        return new ApacheTikaDocumentParser();
     }
 
     /**
@@ -592,9 +622,10 @@ public class DocumentIngestionService {
             case "pdf" -> "Documento PDF";
             case "docx" -> "Procesador de textos (DOCX)";
             case "doc" -> "Procesador de textos (DOC)";
+            case "html" -> "Página Web (HTML)";
             case "txt" -> "Texto plano";
             case "md" -> "Markdown";
-            default -> "Formato no especificado";
+            default -> "Formato auto-detectado (Tika)";
         };
     }
 

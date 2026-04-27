@@ -40,7 +40,9 @@ public class DocumentResource {
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX
             "application/msword", // DOC
-            "text/plain");
+            "text/plain",
+            "text/markdown",
+            "text/html");
 
     // Tamaño máximo: 10MB
     private static final long TAMANIO_MAXIMO = 10 * 1024 * 1024;
@@ -63,12 +65,15 @@ public class DocumentResource {
                         .build();
             }
 
-            // 2. Validación del tipo MIME (Multipurpose Internet Mail Extensions)
+            // 2. Validación del tipo MIME (Multipurpose Internet Mail Extensions) y extensión
             String tipoMime = ficheroCargado.contentType();
-            if (!TIPOS_PERMITIDOS.contains(tipoMime)) {
+            String nombreMinuscula = ficheroCargado.fileName().toLowerCase();
+            boolean esMarkdownStream = tipoMime.equals("application/octet-stream") && nombreMinuscula.endsWith(".md");
+            
+            if (!TIPOS_PERMITIDOS.contains(tipoMime) && !esMarkdownStream) {
                 Log.warnf("Formato de fichero no soportado: %s", tipoMime);
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(new ErrorResponse("Formato incompatible. Extensiones soportadas: PDF, DOCX, DOC, TXT"))
+                        .entity(new ErrorResponse("Formato incompatible. Extensiones soportadas: PDF, DOCX, DOC, TXT, MD, HTML"))
                         .build();
             }
 
