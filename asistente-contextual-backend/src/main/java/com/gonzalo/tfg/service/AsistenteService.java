@@ -1,8 +1,6 @@
 package com.gonzalo.tfg.service;
 
-import com.gonzalo.tfg.tools.DocumentSystemTool;
-import com.gonzalo.tfg.tools.SystemActionsTool;
-import com.gonzalo.tfg.tools.WebSearchTool;
+import com.gonzalo.tfg.tools.*;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.MemoryId;
@@ -10,30 +8,17 @@ import io.quarkiverse.langchain4j.RegisterAiService;
 
 /*
  Servicio de IA optimizado para RAG (Retrieval-Augmented Generation).
- MEJORAS EN EL PROMPT:
- 1. Instrucciones claras sobre uso del contexto
- 2. Formato estructurado para citar fuentes
- 3. Manejo explícito de casos sin contexto suficiente
- 4. Directrices para sintetizar múltiples fragmentos
- El sistema RAG funciona así:
- 1. Usuario hace pregunta
- 2. ContentRetriever busca fragmentos relevantes (top-5, score >0.7)
- 3. LangChain4j inyecta fragmentos en el contexto automáticamente
- 4. Este prompt guía al modelo para usar bien ese contexto
  */
 
-@RegisterAiService(tools = { DocumentSystemTool.class, SystemActionsTool.class, WebSearchTool.class })
-/*
- * @RegisterAiService(tools = {
- * DocumentSystemTool.class,
- * SystemActionsTool.class,
- * WebSearchTool.class,
- * KnowledgeBaseStatsTool.class,
- * SemanticSearchTool.class,
- * MarketCalculatorTool.class,
- * ReportGeneratorTool.class
- * })
- */
+@RegisterAiService(tools = {
+      DocumentSystemTool.class,
+      SystemActionsTool.class,
+      WebSearchTool.class,
+      KnowledgeBaseStatsTool.class,
+      SemanticSearchTool.class,
+      MarketCalculatorTool.class,
+      ReportGeneratorTool.class
+})
 public interface AsistenteService {
 
    /*
