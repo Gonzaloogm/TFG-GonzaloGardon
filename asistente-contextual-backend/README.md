@@ -41,5 +41,42 @@ Para ejecutar este proyecto en tu entorno local, necesitarás:
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone [https://github.com/tu-usuario/asistente-contextual-backend.git](https://github.com/tu-usuario/asistente-contextual-backend.git)
+   git clone https://github.com/tu-usuario/asistente-contextual-backend.git
    cd asistente-contextual-backend
+   ```
+
+2. **Configurar variables de entorno:**
+   Exporta tu clave de Gemini:
+   ```bash
+   export QUARKUS_LANGCHAIN4J_AI_GEMINI_CHAT_MODEL_API_KEY="tu_clave_api_aqui"
+   ```
+
+3. **Levantar la Base de Datos (opcional si usas Dev Services):**
+   ```bash
+   docker run -d \
+     --name pgvector-postgres \
+     -e POSTGRES_USER=postgres \
+     -e POSTGRES_PASSWORD=postgres \
+     -e POSTGRES_DB=postgres \
+     -p 5432:5432 \
+     pgvector/pgvector:pg16
+   ```
+
+4. **Ejecutar en modo Desarrollo:**
+   ```bash
+   ./mvnw quarkus:dev
+   ```
+
+## 📦 Ejecución en Modo Producción
+
+1. **Compilar el proyecto:**
+   ```bash
+   ./mvnw clean package -DskipTests
+   ```
+
+2. **Ejecutar el JAR:**
+   ```bash
+   java -jar target/quarkus-app/quarkus-run.jar
+   ```
+
+El backend se iniciará en **http://localhost:8080**.
