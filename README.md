@@ -89,9 +89,7 @@ docker run -d \
   -p 5432:5432 \
   pgvector/pgvector:pg16
 ```
-*(Nota: Asegúrate de que las credenciales y el puerto coincidan con tu configuración de `application.properties`. Si prefieres usar los Dev Services integrados de Quarkus, este paso se realiza automáticamente al compilar).*er-compose up -d
-```
-*(Nota: Si usas los Dev Services de Quarkus, este paso se realiza automáticamente al iniciar la aplicación).*
+*(Nota: Asegúrate de que las credenciales y el puerto coincidan con tu configuración de `application.properties`. Si prefieres usar los Dev Services integrados de Quarkus, este paso se realiza automáticamente al iniciar la aplicación).*
 
 ---
 
