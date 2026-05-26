@@ -3,6 +3,7 @@ package com.gonzalo.tfg.resource;
 import com.gonzalo.tfg.entity.ChatSessionEntity;
 import com.gonzalo.tfg.model.ChatSessionSummaryDTO;
 import com.gonzalo.tfg.service.ChatService;
+import io.quarkus.logging.Log;
 import io.quarkus.panache.common.Sort;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -29,22 +30,11 @@ public class ChatResource {
                 .collect(Collectors.toList());
     }
 
+
     @DELETE
     @Path("/{id}")
     @Transactional
     public Response borrarSesion(@PathParam("id") String id) {
-        /*
-         * Validación explícita del formato UUID antes de llegar al servicio.
-         *
-         * El problema original: Quarkus resuelve el proxy @SessionScoped de
-         * WebSocketConnection (inyectado en ChatWebSocket) en el contexto CDI
-         * compartido, y su toString() llega aquí como valor del parámetro cuando
-         * no hay sesión WebSocket activa durante una petición REST.
-         *
-         * Esta validación actúa como firewall: si el valor no es un UUID válido,
-         * falla rápido con 400 en lugar de propagar el objeto de contexto corrupto
-         * al servicio y a la BD.
-         */
         if (id == null || id.isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("{\"error\":\"El identificador de sesión no puede estar vacío.\"}")
@@ -55,10 +45,9 @@ public class ChatResource {
         try {
             UUID.fromString(id);
         } catch (IllegalArgumentException e) {
-            io.quarkus.logging.Log.errorf(
+            Log.errorf(
                     "DELETE /api/chats recibió un id no válido: '%s'. " +
-                            "Posible contaminación del contexto CDI por WebSocketConnection @SessionScoped.",
-                    id);
+                            "Posible contaminación del contexto CDI por WebSocketConnection @SessionScoped.", id);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("{\"error\":\"Identificador de sesión con formato inválido.\"}")
                     .type(MediaType.APPLICATION_JSON)
@@ -68,21 +57,21 @@ public class ChatResource {
         try {
             boolean eliminado = chatService.eliminarSesion(id);
             if (!eliminado) {
-                return Response.status(Response.Status.NOT_FOUND)
-                        .entity("{\"error\":\"Sesión no encontrada: " + id + "\"}")
-                        .type(MediaType.APPLICATION_JSON)
-                        .build();
+                // Sesión no existe en BD — para el frontend igual es éxito
+                // (ya no existe, objetivo cumplido)
+                return Response.noContent().build();
             }
             return Response.noContent().build();
 
         } catch (Exception e) {
-            io.quarkus.logging.Log.errorf(e, "Error crítico al eliminar la sesión %s", id);
+            Log.errorf(e, "Error crítico al eliminar la sesión %s", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\":\"Error interno al eliminar la sesión. Consulte los logs.\"}")
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         }
     }
+
 
     @PUT
     @Path("/{id}/titulo")

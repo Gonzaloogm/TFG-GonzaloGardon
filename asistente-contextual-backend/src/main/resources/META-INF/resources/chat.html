@@ -930,7 +930,8 @@
                 enviando: false,   // A2: bloquea doble envío
                 cierreIntencional: false,   // B2: distingue cierre intencional vs. error
                 intervalos: [],      // B3: guarda refs para limpiarlas si fuera necesario
-                MAX_CHARS: 4000
+                MAX_CHARS: 4000,
+                cargandoChats: false
             };
 
             // =====================================================================
@@ -1245,6 +1246,8 @@
             }
 
             async function cargarListaChats() {
+                if (App.cargandoChats) return;
+                App.cargandoChats = true;
                 if (!DOM.chatList) return;
                 try {
                     const response = await fetch('/api/chats');
@@ -1301,6 +1304,7 @@
                             // B4: el título real (sin escaping) va al modal de edición
                             renombrarChat(sesion.sessionId, sesion.titulo || 'Sin nombre');
                         });
+                        const sessionIdCopia = String(sesion.sessionId);
                         item.querySelector('.btn-delete').addEventListener('click', (e) => {
                             e.stopPropagation();
                             borrarChat(sesion.sessionId);
@@ -1310,6 +1314,8 @@
                     });
                 } catch (error) {
                     console.error('Error en cargarListaChats:', error);
+                }finally {
+                    App.cargandoChats = false;
                 }
             }
 
@@ -1348,9 +1354,16 @@
                         try {
                             const response = await fetch(`/api/chats/${id}`, { method: 'DELETE' });
                             if (response.ok || response.status === 204) {
-                                if (id === App.idSesionActual) crearNuevoChat();
-                                cargarListaChats();
                                 mostrarToast('Conversación eliminada.', 'success');
+                                cargarListaChats();
+                                if (id === App.idSesionActual) {
+                                    // ANTES: crearNuevoChat() directo — contaminaba el contexto CDI
+                                    // del DELETE porque el hilo Vert.x reutilizaba el RequestContext
+                                    // activo al abrir el nuevo WebSocket inmediatamente.
+                                    // AHORA: setTimeout(0) cede el hilo al event loop, el RequestContext
+                                    // del DELETE se libera, y crearNuevoChat se ejecuta en contexto limpio.
+                                    setTimeout(() => crearNuevoChat(), 0);
+                                }
                             } else {
                                 mostrarToast('No se pudo eliminar la conversación.', 'error');
                             }
