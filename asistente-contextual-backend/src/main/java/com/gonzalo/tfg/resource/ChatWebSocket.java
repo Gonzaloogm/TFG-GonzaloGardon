@@ -43,7 +43,19 @@ public class ChatWebSocket {
 
     @OnTextMessage
     public String alRecibirMensaje(@PathParam("sessionId") String sessionId, String mensaje) {
-        String respuesta = asistenteService.chat(sessionId, mensaje);
-        return respuesta.replaceAll("(?s)<thinking>.*?</thinking>\\s*", "");
+        try {
+            String respuesta = asistenteService.chat(sessionId, mensaje);
+            return respuesta.replaceAll("(?s)<thinking>.*?</thinking>\\s*", "");
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            if (msg.contains("429") || msg.contains("RATE_LIMIT")
+                    || msg.contains("quota") || msg.contains("exhausted")) {
+                Log.warnf("Rate limit alcanzado para sesión %s: %s", sessionId, msg);
+                return "Límite de velocidad de la API alcanzado. " +
+                        "Espera unos segundos antes de continuar.";
+            }
+            Log.errorf(e, "Error procesando mensaje de sesión %s", sessionId);
+            return "Error al procesar tu consulta. Por favor, inténtalo de nuevo.";
+        }
     }
 }

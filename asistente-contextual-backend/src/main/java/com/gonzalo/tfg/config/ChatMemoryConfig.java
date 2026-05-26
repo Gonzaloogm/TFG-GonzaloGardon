@@ -28,7 +28,7 @@ public class ChatMemoryConfig {
     public ChatMemoryProvider chatMemoryProvider() {
         return sessionId -> MessageWindowChatMemory.builder()
                 .id(sessionId)
-                .maxMessages(20)
+                .maxMessages(12)
                 .chatMemoryStore(chatMemoryStore)
                 .build();
     }

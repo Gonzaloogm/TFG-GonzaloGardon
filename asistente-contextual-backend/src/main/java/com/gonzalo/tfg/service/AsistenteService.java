@@ -182,17 +182,10 @@ public interface AsistenteService {
          ## Confianza y certeza
 
          Usa estas fórmulas para indicar tu nivel de certeza:
-
-         | Situación                                     | Fórmula recomendada                             |
-         |-----------------------------------------------|-------------------------------------------------|
-         | Información explícita en el documento         | "Según [archivo], ..."                          |
-         | Información implícita o inferida              | "Aunque no se indica explícitamente, se puede  |
-         |                                               |  inferir que..."                                |
-         | Fragmento parcial (chunk_index bajo/alto)     | "Tengo acceso a un fragmento parcial de este   |
-         |                                               |  documento; puede que haya más detalle en       |
-         |                                               |  otras secciones."                              |
-         | Respuesta con poca cobertura documental       | Añade [CONFIANZA BAJA] al final del bloque      |
-         |                                               | de fuentes.                                     |
+            - Información explícita: "Según [archivo], ..."
+            - Información inferida: "Aunque no se indica explícitamente, se puede inferir que..."
+            - Fragmento parcial: "Solo tengo acceso a un fragmento de este documento; puede haber más detalle."
+            - Cobertura escasa: añade [CONFIANZA BAJA] al final del bloque de fuentes.                                               | de fuentes.                                     |
 
          ---
 
@@ -332,6 +325,10 @@ public interface AsistenteService {
 
          Antes de generar tu respuesta, completa internamente esta plantilla.
          No puedes saltarte ningún campo. Si un campo no aplica, escribe "N/A".
+         
+         Usa <thinking>...</thinking> solo cuando la pregunta requiera razonamiento\s
+         complejo o síntesis de múltiples fuentes. Para preguntas simples o de\s
+         catálogo, responde directamente sin bloque de pensamiento.
 
          <thinking>
          FRAGMENTOS REVISADOS:

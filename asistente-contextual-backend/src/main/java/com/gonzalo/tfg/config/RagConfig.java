@@ -24,6 +24,7 @@ import jakarta.inject.Inject;
 import com.gonzalo.tfg.service.DocumentIngestionService;
 import com.gonzalo.tfg.service.PostgresKeywordRetriever;
 import com.gonzalo.tfg.model.DocumentoDTO;
+import jakarta.inject.Named;
 
 import java.text.Normalizer;
 import java.util.*;
@@ -236,7 +237,7 @@ public class RagConfig {
                     EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
-                            .maxResults(20)
+                            .maxResults(8)
                             .minScore(umbralDinamico)
                             .build(),
                     postgresKeywordRetriever.crearRetriever(null, queryParaKeywords));
@@ -466,9 +467,23 @@ public class RagConfig {
         return EmbeddingStoreContentRetriever.builder()
                 .embeddingStore(embeddingStore)
                 .embeddingModel(embeddingModel)
-                .maxResults(5)
-                .minScore(0.70)
+                .maxResults(7)
+                .minScore(0.68)
                 .filter(MetadataFilterBuilder.metadataKey(filterKey).isEqualTo(filterValue))
+                .build();
+    }
+
+    @Produces
+    @ApplicationScoped
+    @Named("lightRetriever")
+    public ContentRetriever lightContentRetriever(
+            EmbeddingStore<TextSegment> store,
+            EmbeddingModel model) {
+        return EmbeddingStoreContentRetriever.builder()
+                .embeddingStore(store)
+                .embeddingModel(model)
+                .maxResults(2)       // Solo 2 fragmentos en vez de 5
+                .minScore(0.75)      // Umbral más exigente
                 .build();
     }
 }

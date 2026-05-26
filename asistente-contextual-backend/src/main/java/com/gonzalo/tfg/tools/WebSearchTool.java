@@ -1,15 +1,16 @@
 package com.gonzalo.tfg.tools;
 
-import dev.langchain4j.agent.tool.Tool;
-import io.quarkus.logging.Log;
-import jakarta.enterprise.context.ApplicationScoped;
+import java.net.URLEncoder;
+import java.util.stream.Collectors;
+
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import java.net.URLEncoder;
-import java.util.stream.Collectors;
+import dev.langchain4j.agent.tool.Tool;
+import io.quarkus.logging.Log;
+import jakarta.enterprise.context.ApplicationScoped;
 
 @ApplicationScoped
 public class WebSearchTool {
@@ -33,12 +34,19 @@ public class WebSearchTool {
                 results = doc.select("a.result__a");
             }
 
-            return results.stream()
-                    .limit(4)
+            String resultado = results.stream()
+                    .limit(3)
                     .map(Element::text)
                     .filter(text -> text.length() > 20)
                     .collect(Collectors.joining("\n\n---\n\n"));
 
+            resultado = resultado.replaceAll("\\s{3,}", "\n\n").trim();
+
+            if (resultado.length() > 3200) {
+                resultado = resultado.substring(0, 3200) + "\n[...resultado truncado para optimizar tokens]";
+            }
+
+            return resultado;   
         } catch (Exception e) {
             return "Error técnico en la búsqueda: " + e.getMessage();
         }
