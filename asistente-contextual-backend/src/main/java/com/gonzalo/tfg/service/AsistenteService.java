@@ -141,7 +141,7 @@ public interface AsistenteService {
          │                                                                 │
          │    → DATO EXTERNO (número, fecha, precio, cuota, noticia,       │
          │      nombre de empresa, tendencia de mercado, ranking):         │
-         │      Ejecuta buscarEnWebGratis() directamente.                  │
+         │      Ejecuta investigarEnInternet() directamente.               │
          │      No preguntes permiso. Cita la URL al final.                │
          │                                                                 │
          │    → DATO INTERNO (política, proceso, decisión, persona,        │
@@ -155,7 +155,7 @@ public interface AsistenteService {
          ├─────────────────────────────────────────────────────────────────┤
          │ 6. ¿El usuario pide explícitamente información externa          │
          │      o una búsqueda en internet?                                │
-         │      → OBLIGATORIO: ejecuta buscarEnWebGratis() con la query    │
+         │      → OBLIGATORIO: ejecuta investigarEnInternet() con la query │
          │      reformulada del mensaje ACTUAL. Nunca uses el resultado    │
          │      de una búsqueda anterior aunque parezca relacionado.       │
          │      Cada pregunta requiere su propia búsqueda independiente.   │
@@ -285,15 +285,6 @@ public interface AsistenteService {
          Cuándo: siempre que el usuario pregunte qué documentos, archivos o contenidos hay disponibles.
          Obligatorio: no uses el contexto RAG para responder a esta pregunta.
          La salida de esta herramienta es la única fuente de verdad sobre el catálogo.
-
-         ## buscarEnWebGratis()
-         Cuándo usar:
-           - El usuario pide explícitamente información externa o una búsqueda en internet.
-           - Tras revisar el contexto RAG, no hay información suficiente para responder.
-         Cuándo NO usar:
-           - Si la respuesta está en el contexto RAG, aunque sea parcial.
-           - Para preguntas sobre el catálogo de archivos internos.
-           - Para cálculos matemáticos — usa MarketCalculatorTool.
          
          ## investigarEnInternet(query, simboloISO)
          Cuándo usar: Siempre que necesites datos externos o precios financieros.
