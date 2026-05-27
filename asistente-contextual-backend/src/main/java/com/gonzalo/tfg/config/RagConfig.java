@@ -170,6 +170,15 @@ public class RagConfig {
             String inputOriginal = query.text();
             // M2: Normalizamos desde el principio para toda la lógica del enrutador
             String input = normalizarTexto(inputOriginal);
+            // Detección de mensajes cortos sin contenido semántico (saludos, cortesías)
+            // Para estos no tiene sentido buscar en vectores — evita RAG Hijacking
+            boolean esSaludo = input.split("\\s+").length <= 3 &&
+                    input.matches(
+                            ".*(hola|buenos|buenas|gracias|adios|hasta luego|hey|ey|que tal|como estas|estas ahi|ahi estas).*");
+            if (esSaludo) {
+                Log.debug("Enrutador: Detectado saludo/cortesía. Sin recuperación vectorial.");
+                return Collections.emptyList();
+            }
 
             // M10: Detección de catálogo usando el Set normalizado — cubre tildes y
             // variantes
@@ -225,9 +234,10 @@ public class RagConfig {
             }
 
             // HyDE (Hypothetical Document Embeddings) Placeholder
-            // En una fase posterior, aquí se llamaría a un LLM para generar una respuesta hipotética
+            // En una fase posterior, aquí se llamaría a un LLM para generar una respuesta
+            // hipotética
             // y se usaría el embedding de esa respuesta para la recuperación semántica.
-            String queryParaVector = inputOriginal; // Por ahora directo
+            // String queryParaVector = inputOriginal; // Por ahora directo
 
             // BÚSQUEDA GLOBAL: M3 — umbral basado en número de palabras significativas
             double umbralDinamico = Math.max(0.65, calcularUmbralDinamico(queryParaKeywords));
@@ -411,9 +421,9 @@ public class RagConfig {
                 .count();
 
         if (numPalabras <= 2)
-            return 0.60;
+            return 0.68;
         if (numPalabras <= 4)
-            return 0.65;
+            return 0.70;
         return 0.75;
     }
 
@@ -482,8 +492,8 @@ public class RagConfig {
         return EmbeddingStoreContentRetriever.builder()
                 .embeddingStore(store)
                 .embeddingModel(model)
-                .maxResults(2)       // Solo 2 fragmentos en vez de 5
-                .minScore(0.75)      // Umbral más exigente
+                .maxResults(2) // Solo 2 fragmentos en vez de 5
+                .minScore(0.75) // Umbral más exigente
                 .build();
     }
 }

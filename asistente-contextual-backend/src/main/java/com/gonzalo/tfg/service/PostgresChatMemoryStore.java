@@ -1,10 +1,12 @@
 package com.gonzalo.tfg.service;
 
 import com.gonzalo.tfg.entity.ChatSessionEntity;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageDeserializer;
 import dev.langchain4j.data.message.ChatMessageSerializer;
 import dev.langchain4j.data.message.ChatMessageType;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.store.memory.chat.ChatMemoryStore;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -48,7 +50,65 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
             return new ArrayList<>();
         }
 
-        return ChatMessageDeserializer.messagesFromJson(entidad.messagesJson);
+        List<ChatMessage> allMessages = ChatMessageDeserializer.messagesFromJson(entidad.messagesJson);
+        return filtrarToolResultsAnteriores(allMessages);
+    }
+
+    /**
+     * Filtra los ToolExecutionResultMessage de turnos de tool-use anteriores
+     * para evitar que Gemini reutilice resultados obsoletos del historial
+     * en lugar de reinvocar la tool.
+     *
+     * Conserva intacto el último turno de tool-use (AiMessage con tool requests
+     * + sus ToolExecutionResultMessage inmediatamente siguientes).
+     * En turnos anteriores, elimina los ToolExecutionResultMessage pero mantiene
+     * el AiMessage correspondiente para que el LLM recuerde que ejecutó una tool.
+     */
+    private List<ChatMessage> filtrarToolResultsAnteriores(List<ChatMessage> messages) {
+        if (messages.isEmpty()) {
+            return messages;
+        }
+
+        // --- Paso 1: localizar el índice donde empieza el ÚLTIMO turno de tool-use ---
+        // El último turno es: el último AiMessage que tiene toolExecutionRequests,
+        // seguido de uno o más ToolExecutionResultMessage consecutivos.
+        int inicioUltimoTurno = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage msg = messages.get(i);
+            if (msg instanceof AiMessage aiMsg && aiMsg.hasToolExecutionRequests()) {
+                inicioUltimoTurno = i;
+                break;
+            }
+        }
+
+        // --- Paso 2: construir la lista filtrada ---
+        List<ChatMessage> resultado = new ArrayList<>(messages.size());
+        int filtrados = 0;
+
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage msg = messages.get(i);
+
+            // Si estamos en el último turno de tool-use o después, conservar todo
+            if (inicioUltimoTurno != -1 && i >= inicioUltimoTurno) {
+                resultado.add(msg);
+                continue;
+            }
+
+            // Fuera del último turno: eliminar ToolExecutionResultMessage
+            if (msg instanceof ToolExecutionResultMessage) {
+                filtrados++;
+                continue;
+            }
+
+            resultado.add(msg);
+        }
+
+        if (filtrados > 0) {
+            Log.debugf("getMessages: filtrados %d ToolExecutionResultMessage de turnos anteriores (sesión: %s)",
+                    filtrados, messages.size());
+        }
+
+        return resultado;
     }
 
     @Override

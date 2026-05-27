@@ -282,9 +282,9 @@ public class DocumentIngestionService {
                     metadatosMap.put("titulo_markdown", titulo);
                 }
             }
-            
+
             // Extraer metadatos específicos de Apache Tika (ej. Author de .docx, title)
-            String[] clavesTika = {"Author", "creator", "title"};
+            String[] clavesTika = { "Author", "creator", "title" };
             for (String key : clavesTika) {
                 if (documento.metadata().containsKey(key)) {
                     String val = documento.metadata().getString(key);
@@ -318,10 +318,11 @@ public class DocumentIngestionService {
             }
 
             // Propagación de metadatos a un objeto Document limpio
-            // Esto evita que metadatos extraños de Tika (con caracteres nulos o formatos raros) 
+            // Esto evita que metadatos extraños de Tika (con caracteres nulos o formatos
+            // raros)
             // rompan el driver de pgvector.
             Map<String, Object> metadatosLimpios = new HashMap<>(metadatosMap);
-            
+
             Document documentoLimpio = Document.from(documento.text(), Metadata.from(metadatosLimpios));
 
             // Fragmentación semántica
@@ -336,12 +337,14 @@ public class DocumentIngestionService {
                 Log.infof("Iniciando enriquecimiento paralelo para %d segmentos...", segmentos.size());
                 segmentosAProcesar = segmentos.parallelStream().map(seg -> {
                     try {
-                        String entidades = metadataExtractor.extraerEntidades(seg.text());
+                        String salidaLLM = metadataExtractor.extraerEntidades(seg.text());
+                        java.util.Map<String, String> metaParsed = MetadataExtractor.parsear(salidaLLM);
                         dev.langchain4j.data.document.Metadata meta = seg.metadata().copy();
-                        meta.put("entidades", entidades);
+                        // Guarda cada campo por separado en lugar del string crudo completo
+                        metaParsed.forEach(meta::put);
                         return TextSegment.from(seg.text(), meta);
                     } catch (Exception e) {
-                        Log.warnf("Error en fragmento: %s", e.getMessage());
+                        Log.warnf("Error enriqueciendo fragmento: %s", e.getMessage());
                         return seg;
                     }
                 }).collect(Collectors.toList());
@@ -563,7 +566,8 @@ public class DocumentIngestionService {
             return new TextDocumentParser(java.nio.charset.StandardCharsets.UTF_8);
         }
 
-        // Tika Document Parser universal para auto-detectar MIME types (PDF, DOCX, HTML, etc)
+        // Tika Document Parser universal para auto-detectar MIME types (PDF, DOCX,
+        // HTML, etc)
         return new ApacheTikaDocumentParser();
     }
 
