@@ -294,6 +294,13 @@ public interface AsistenteService {
            - Si la respuesta está en el contexto RAG, aunque sea parcial.
            - Para preguntas sobre el catálogo de archivos internos.
            - Para cálculos matemáticos — usa MarketCalculatorTool.
+         
+         ## investigarEnInternet(query, simboloISO)
+         Cuándo usar: Siempre que necesites datos externos o precios financieros.
+         Regla Estricta 1: Si es una consulta financiera, debes rellenar 'simboloISO'.
+         Regla Estricta 2: Si el usuario pide comparar VARIAS monedas a la vez (ej. Euro, Dólar y Libra), 
+         elige SOLO UNA como base (ej. EUR) y ponla en 'simboloISO'. 
+         La herramienta te devolverá la tabla completa con el resto de valores para que redactes la comparativa..
 
          REGLA CRÍTICA DE INDEPENDENCIA:
          Cada búsqueda web es completamente independiente de la anterior.
@@ -306,12 +313,6 @@ public interface AsistenteService {
          Cuándo: el usuario pide información del entorno local (archivos en disco, memoria, OS, rutas).
          Regla: nunca inventes archivos ni rutas. Búscalos con las herramientas reales.
          Usa estas herramientas de forma sistemática, no especulativa.
-
-         ## obtenerPrecioFinanciero(simbolo)
-         Cuándo usar: SIEMPRE que el usuario pregunte por el valor de una moneda (ej. Libra, Dólar, Euro),
-         criptomoneda (Bitcoin, Ethereum) o materia prima (Oro, Plata).
-         Regla Estricta: NUNCA uses buscarEnWebGratis directamente para precios de divisas o criptos.
-         Usa SIEMPRE esta herramienta y extrae el código ISO de 3 letras de la pregunta del usuario (ej. GBP, BTC, XAU).
 
          ---
 
