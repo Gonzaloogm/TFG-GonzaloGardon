@@ -24,7 +24,7 @@ import java.util.Set;
  1. Recepción del fichero mediante petición POST multipart en /api/documentos/upload.
  2. Validación técnica de formato (PDF, DOCX, TXT).
  3. Validación de restricciones de tamaño (límite establecido en 10MB).
- 4. Invocación del servicio DocumentIngestionService para su procesamiento semántico.
+ 4. Invocación del servicio DocumentIngestionService para su procesamiento por significado.
  5. Notificación del resultado con el identificador del recurso generado.
  */
 @Path("/api/documentos")

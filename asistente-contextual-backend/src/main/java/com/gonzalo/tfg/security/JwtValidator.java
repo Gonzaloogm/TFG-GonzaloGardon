@@ -16,8 +16,8 @@ import java.util.Optional;
  * {@code quarkus-smallrye-jwt} intercepta y valida automáticamente los tokens
  * en las peticiones HTTP REST (endpoints con {@code @Authenticated} o
  * {@code @RolesAllowed}). Sin embargo, los WebSockets de Quarkus
- * ({@code quarkus-websockets-next}) <strong>no pasan por el filtro de seguridad
- * HTTP estándar</strong>, por lo que es necesario validar el token manualmente
+ * ({@code quarkus-websockets-next}) no pasan por el filtro de seguridad
+ * HTTP estándar, por lo que es necesario validar el token manualmente
  * dentro del handler {@code @OnTextMessage}.
 
  * Se utiliza el {@link JWTParser} proporcionado por SmallRye JWT, que aplica

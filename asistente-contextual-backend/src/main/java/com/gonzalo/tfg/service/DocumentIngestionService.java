@@ -42,33 +42,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Servicio de ingestión de documentos en el sistema RAG.
- *
- * <p>
- * Implementa el ciclo completo de procesamiento de documentos:
- * extracción de texto, enriquecimiento semántico de metadatos mediante LLM,
- * fragmentación con solapamiento, vectorización en lote y persistencia
- * en la base de datos vectorial pgvector.
- * </p>
- *
- * <p>
- * Flujo de procesamiento:
- * </p>
- * 
- * <pre>
- *   Fichero → Extracción (Tika/Plain) → Enriquecimiento (LLM)
- *           → Fragmentación (300 tokens / 30 solapamiento)
- *           → Vectorización en lote (embedAll)
- *           → pgvector + catálogo JSON
- * </pre>
- *
- * <p>
- * El registro de metadatos se mantiene en memoria mediante un
- * {@link ConcurrentHashMap} e indexado por nombre en minúsculas para
- * búsquedas O(1) en la operación de eliminación. El estado se persiste
- * en un fichero JSON local ({@value #FICHERO_CATALOGO}) para sobrevivir
- * reinicios de la aplicación.
- * </p>
+ * Guarda y procesa los documentos que sube el usuario.
+ * Extrae el texto, lo divide en partes y lo guarda en la base de datos para poder buscar en él.
  */
 @ApplicationScoped
 public class DocumentIngestionService {
@@ -79,73 +54,35 @@ public class DocumentIngestionService {
     @Inject
     EmbeddingModel modeloVectores;
 
-    /**
-     * Registro principal de documentos procesados, indexado por UUID de documento.
-     * Se utiliza {@link ConcurrentHashMap} para garantizar acceso seguro en
-     * entornos multihilo.
-     */
+    /** Lista principal donde se guardan todos los documentos. */
     private final Map<String, DocumentoDTO> registroDocumentos = new ConcurrentHashMap<>();
 
-    /**
-     * Índice invertido que mapea el nombre del fichero en minúsculas a su UUID.
-     * Permite resolver búsquedas por nombre en tiempo O(1), evitando la iteración
-     * lineal sobre {@link #registroDocumentos}.
-     */
+    /** Diccionario rápido para buscar un documento por su nombre. */
     private final Map<String, String> indicePorNombre = new ConcurrentHashMap<>();
 
-    /** Tamaño de cada fragmento textual expresado en tokens. */
+    /** Palabras aproximadas en cada trozo de texto. */
     private static final int TAMANIO_FRAGMENTO = 300;
 
-    /**
-     * Número de tokens compartidos entre fragmentos consecutivos para preservar
-     * coherencia semántica.
-     */
+    /** Palabras que se repiten entre trozos seguidos para no perder el hilo. */
     private static final int SOLAPAMIENTO_FRAGMENTO = 30;
 
-    /**
-     * Conjunto inmutable de términos tecnológicos usados en la extracción pasiva de
-     * metadatos.
-     * Se define como constante estática para evitar su reinstanciación en cada
-     * invocación de {@link #ingerirFichero}.
-     */
+    /** Palabras de tecnología para clasificar mejor los textos. */
     private static final Set<String> TECH_STACK = Set.of(
             "java", "quarkus", "postgres", "pgvector", "langchain4j",
             "docker", "kubernetes", "react", "spring boot", "python",
             "javascript", "typescript");
 
-    /**
-     * Patrón compilado para la detección de referencias temporales en el cuerpo del
-     * documento.
-     *
-     * <p>
-     * Cubre los siguientes formatos:
-     * </p>
-     * <ul>
-     * <li>{@code dd-MM-yyyy} y {@code dd/MM/yyyy} — formatos de fecha habituales en
-     * español</li>
-     * <li>{@code yyyy-MM-dd} — formato ISO 8601</li>
-     * <li>{@code yyyy} — años de cuatro dígitos aislados</li>
-     * </ul>
-     *
-     * <p>
-     * La compilación se realiza una única vez en tiempo de carga de la clase para
-     * evitar la penalización de {@link Pattern#compile} dentro de bucles de
-     * ingestión.
-     * </p>
-     */
+    /** Regla para encontrar fechas dentro del texto. */
     private static final Pattern PATRON_FECHAS = Pattern.compile(
             "\\b(\\d{2}[-/]\\d{2}[-/]\\d{4}|\\d{4}-\\d{2}-\\d{2}|\\d{4})\\b");
 
-    /** Número máximo de referencias temporales que se extraen por documento. */
+    /** Límite de fechas a guardar por cada archivo. */
     private static final int MAX_FECHAS = 5;
 
     @Inject
     MetadataExtractor metadataExtractor;
 
-    /**
-     * Ruta relativa del fichero JSON que persiste el catálogo de documentos entre
-     * reinicios.
-     */
+    /** Archivo donde se guardan los datos para no perderlos. */
     private static final String FICHERO_CATALOGO = "documents_catalog.json";
 
     @Inject
@@ -163,16 +100,7 @@ public class DocumentIngestionService {
     // -------------------------------------------------------------------------
 
     /**
-     * Inicializa el servicio restituyendo el estado del catálogo desde el fichero
-     * de
-     * persistencia local.
-     *
-     * <p>
-     * Si el fichero {@value #FICHERO_CATALOGO} existe, deserializa la lista de
-     * {@link DocumentoDTO} y reconstruye tanto el registro principal como el índice
-     * invertido por nombre, garantizando consistencia entre ambas estructuras en
-     * arranques en caliente.
-     * </p>
+     * Carga los documentos guardados al arrancar el servidor.
      */
     @PostConstruct
     void inicializar() {
@@ -199,38 +127,12 @@ public class DocumentIngestionService {
     // -------------------------------------------------------------------------
 
     /**
-     * Procesa un fichero y lo incorpora al sistema RAG.
+     * Prepara y guarda un archivo en el sistema de búsqueda.
      *
-     * <p>
-     * El método ejecuta secuencialmente las siguientes fases:
-     * </p>
-     * <ol>
-     * <li>Validación de entradas con fallo rápido.</li>
-     * <li>Extracción de texto mediante el analizador apropiado (Tika o
-     * plain-text).</li>
-     * <li>Extracción pasiva de metadatos tecnológicos y temporales del cuerpo del
-     * documento.</li>
-     * <li>Fragmentación semántica con {@link DocumentSplitters#recursive}.</li>
-     * <li>Enriquecimiento de cada fragmento mediante llamada al
-     * {@link MetadataExtractor} (LLM).</li>
-     * <li>Vectorización en lote de todos los fragmentos con una única llamada a
-     * {@code embedAll()}, minimizando la latencia de red.</li>
-     * <li>Registro del documento en el catálogo en memoria y persistencia en
-     * disco.</li>
-     * </ol>
-     *
-     * @param rutaFichero    Ruta absoluta al fichero temporal ya almacenado en
-     *                       disco.
-     * @param nombreOriginal Nombre original del fichero proporcionado por el
-     *                       cliente HTTP.
-     * @param metadatosJson  Cadena JSON con metadatos adicionales opcionales; puede
-     *                       ser
-     *                       {@code null} o vacía.
-     * @return {@link DocumentoDTO} con los metadatos del documento procesado.
-     * @throws IllegalArgumentException si {@code rutaFichero} es nulo, no existe, o
-     *                                  {@code nombreOriginal} es nulo o vacío.
-     * @throws RuntimeException         si se produce un error irrecuperable durante
-     *                                  cualquier fase del pipeline de ingestión.
+     * @param rutaFichero Dónde está el archivo en el disco.
+     * @param nombreOriginal Nombre original del archivo subido.
+     * @param metadatosJson Información adicional en formato JSON.
+     * @return Datos del documento guardado.
      */
     public DocumentoDTO ingerirFichero(Path rutaFichero, String nombreOriginal, String metadatosJson) {
         return ingerirFichero(rutaFichero, nombreOriginal, metadatosJson, true);
@@ -391,56 +293,29 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Devuelve la lista completa de documentos registrados en el catálogo.
+     * Muestra todos los documentos que hay en el sistema.
      *
-     * @return Lista de {@link DocumentoDTO}; puede estar vacía si no se ha
-     *         procesado
-     *         ningún documento.
+     * @return Lista de documentos guardados.
      */
     public List<DocumentoDTO> listarDocumentos() {
         return new ArrayList<>(registroDocumentos.values());
     }
 
     /**
-     * Recupera un documento por su identificador único.
+     * Busca un documento concreto usando su ID.
      *
-     * <p>
-     * Se devuelve un {@link Optional} vacío en lugar de {@code null} para
-     * obligar a los consumidores a manejar explícitamente la ausencia del recurso,
-     * eliminando el riesgo de {@link NullPointerException} silenciosas.
-     * </p>
-     *
-     * @param id UUID del documento a recuperar.
-     * @return {@link Optional} con el {@link DocumentoDTO} si existe; vacío en caso
-     *         contrario.
+     * @param id Identificador del documento.
+     * @return El documento si existe, o vacío si no.
      */
     public Optional<DocumentoDTO> obtenerDocumento(String id) {
         return Optional.ofNullable(registroDocumentos.get(id));
     }
 
     /**
-     * Elimina un documento del catálogo y purga sus vectores asociados en pgvector.
+     * Borra un documento y todos sus datos asociados.
      *
-     * <p>
-     * La resolución del documento se realiza en dos pasos:
-     * </p>
-     * <ol>
-     * <li>Búsqueda directa por UUID en {@link #registroDocumentos} — O(1).</li>
-     * <li>Si no coincide, resolución por nombre de fichero (insensible a
-     * mayúsculas)
-     * a través del índice invertido {@link #indicePorNombre} — también O(1).</li>
-     * </ol>
-     *
-     * <p>
-     * La purga de vectores en pgvector se aplica mediante un filtro de metadatos
-     * sobre la clave {@code nombre_archivo}. Si la implementación del
-     * {@link EmbeddingStore} no soporta eliminación nativa, se registra el error
-     * sin interrumpir la operación de catálogo.
-     * </p>
-     *
-     * @param identificador UUID o nombre de fichero del documento a eliminar.
-     * @return {@code true} si el documento existía y fue eliminado; {@code false}
-     *         en caso contrario.
+     * @param identificador Nombre o ID del documento a borrar.
+     * @return Verdadero si se borró, falso si no existía.
      */
     public boolean eliminarDocumento(String identificador) {
 
@@ -483,19 +358,9 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Devuelve un mapa de estadísticas agregadas del catálogo de documentos.
+     * Calcula cuántos documentos, fragmentos y datos tenemos en total.
      *
-     * <p>
-     * El recuento de fragmentos se obtiene mediante una estimación heurística:
-     * {@code fragmentos ≈ caracteres_totales / (TAMANIO_FRAGMENTO × 4)},
-     * donde el factor 4 aproxima la relación carácter/token para texto en español.
-     * </p>
-     *
-     * @return Mapa con las claves: {@code ficheros_procesados},
-     *         {@code total_fragmentos_estimados},
-     *         {@code caracteres_totales_indexados},
-     *         {@code distribucion_por_tipo}, {@code tamanio_fragmento_tokens},
-     *         {@code solapamiento_tokens}.
+     * @return Diccionario con los datos del sistema.
      */
     public Map<String, Object> obtenerEstadisticas() {
         Map<String, Object> estadisticas = new HashMap<>();
@@ -506,7 +371,7 @@ public class DocumentIngestionService {
                 .mapToLong(DocumentoDTO::tamanioBytes)
                 .sum();
 
-        // Heurística de estimación: 1 token ≈ 4 caracteres en español
+        // regla práctica de estimación: 1 token ≈ 4 caracteres en español
         long fragmentosEstimados = caracteresTotales / (TAMANIO_FRAGMENTO * 4L);
 
         Map<String, Long> distribucionTipos = registroDocumentos.values().stream()
@@ -527,16 +392,9 @@ public class DocumentIngestionService {
     // -------------------------------------------------------------------------
 
     /**
-     * Vectoriza una lista de segmentos en una única llamada al modelo de embeddings
-     * y los persiste en el {@link EmbeddingStore}.
+     * Guarda los fragmentos de texto en la base de datos vectorial.
      *
-     * <p>
-     * El procesamiento en lote mediante {@code embedAll()} reduce a una sola
-     * las llamadas de red al modelo de embeddings, independientemente del número de
-     * segmentos, minimizando latencia y coste de API.
-     * </p>
-     *
-     * @param segmentos Lista de {@link TextSegment} a vectorizar y almacenar.
+     * @param segmentos Trozos de texto a guardar.
      */
     private void almacenarSegmentos(List<TextSegment> segmentos) {
         List<Embedding> vectores = modeloVectores.embedAll(segmentos).content();
@@ -549,21 +407,10 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Selecciona el {@link DocumentParser} adecuado en función de la extensión del
-     * fichero.
+     * Elige cómo leer el archivo según si es PDF, texto, etc.
      *
-     * <p>
-     * Los ficheros de texto plano y Markdown se procesan con
-     * {@link TextDocumentParser}
-     * por su menor coste computacional. Los formatos binarios (PDF, DOCX, DOC) se
-     * delegan a {@link ApacheTikaDocumentParser}, que aplica la detección
-     * automática
-     * de formato de Apache Tika.
-     * </p>
-     *
-     * @param nombreFichero Nombre completo del fichero, incluida la extensión.
-     * @return Instancia de {@link DocumentParser} apropiada para el tipo de
-     *         fichero.
+     * @param nombreFichero Nombre del archivo para saber su tipo.
+     * @return Lector adecuado para el archivo.
      */
     private DocumentParser crearAnalizador(String nombreFichero) {
         String extension = obtenerExtension(nombreFichero).toLowerCase();
@@ -579,19 +426,10 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Deserializa una cadena JSON en un mapa de metadatos clave-valor.
+     * Convierte el texto JSON en un mapa fácil de usar.
      *
-     * <p>
-     * Si la cadena es nula, vacía o no contiene JSON válido, se devuelve
-     * un mapa vacío modificable para no interrumpir el flujo de ingestión.
-     * El error de parseo se registra con nivel {@code WARN} para facilitar
-     * el diagnóstico sin elevar a excepción.
-     * </p>
-     *
-     * @param metadatosJson Cadena JSON; puede ser {@code null} o vacía.
-     * @return Mapa de tipo {@code Map<String, String>} con los metadatos
-     *         deserializados,
-     *         o un mapa vacío si la entrada no es procesable.
+     * @param metadatosJson Texto con formato JSON.
+     * @return Mapa con la información, o mapa vacío si falla.
      */
     private Map<String, String> parsearMetadatos(String metadatosJson) {
         if (metadatosJson == null || metadatosJson.isBlank()) {
@@ -608,11 +446,10 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Extrae el sufijo de extensión de un nombre de fichero.
+     * Saca la terminación del archivo (ej. pdf o txt).
      *
-     * @param nombreFichero Nombre del fichero, con o sin ruta.
-     * @return Extensión sin el punto separador (p. ej. {@code "pdf"}),
-     *         o cadena vacía si el nombre no contiene punto.
+     * @param nombreFichero El nombre completo del archivo.
+     * @return La terminación sin el punto.
      */
     private String obtenerExtension(String nombreFichero) {
         int ultimoPunto = nombreFichero.lastIndexOf('.');
@@ -620,12 +457,10 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Resuelve una etiqueta de tipo legible para el usuario a partir de la
-     * extensión del fichero.
+     * Convierte la terminación del archivo en un nombre entendible.
      *
-     * @param nombreFichero Nombre del fichero.
-     * @return Cadena descriptiva del tipo de documento (p. ej.
-     *         {@code "Documento PDF"}).
+     * @param nombreFichero Nombre del archivo.
+     * @return Nombre bonito para el tipo de archivo.
      */
     private String obtenerTipoFichero(String nombreFichero) {
         String extension = obtenerExtension(nombreFichero).toLowerCase();
@@ -641,15 +476,7 @@ public class DocumentIngestionService {
     }
 
     /**
-     * Persiste el estado actual del catálogo de documentos en el fichero
-     * {@value #FICHERO_CATALOGO}.
-     *
-     * <p>
-     * Se invoca tras cada operación de escritura (ingestión o eliminación)
-     * para mantener la coherencia entre el estado en memoria y el almacenamiento
-     * persistente. Los errores de E/S se registran sin propagarse, ya que la
-     * falta de persistencia no invalida la operación en curso.
-     * </p>
+     * Guarda la lista de documentos en disco para no perderla si se reinicia.
      */
     private void guardarCatalogo() {
         try {

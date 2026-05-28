@@ -3,9 +3,9 @@ package com.gonzalo.tfg.security;
 /**
  * Estado de autenticación de una conexión WebSocket.
  *
- * <p>Inmutable: una vez creado, su estado no cambia. Se reemplaza en el
+ * Inmutable: una vez creado, su estado no cambia. Se reemplaza en el
  * {@code ConcurrentHashMap} al pasar de no-autenticado a autenticado,
- * garantizando visibilidad thread-safe sin sincronización adicional.</p>
+ * garantizando visibilidad thread-safe sin sincronización adicional.
  *
  * @param authenticated {@code true} si el cliente ya envió un token JWT válido.
  * @param username      Nombre de usuario extraído del claim {@code sub} del JWT.

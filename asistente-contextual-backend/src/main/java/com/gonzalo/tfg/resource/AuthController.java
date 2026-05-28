@@ -18,25 +18,9 @@ import java.util.Set;
 
 /**
  * Controlador de autenticación para el MVP.
-
- * Proporciona un endpoint de login que valida credenciales contra usuarios
- * hardcodeados en {@code application.properties} y genera tokens JWT firmados
- * con RSA para el axscceso al WebSocket de chat.
-
- * Formato de usuarios en application.properties
-
- * app.users.{username}.password={contraseña en claro}
- * app.users.{username}.company-id={identificador del tenant}
-
- * Decisiones de seguridad
-
- *   Las contraseñas se comparan con {@link MessageDigest#isEqual(byte[], byte[])}
- *       para evitar timing attacks (comparación en tiempo constante).
- *   Los mensajes de error no revelan si el fallo es por usuario o por contraseña
- *       para evitar enumeración de usuarios.
- *   El claim {@code groups} incluye {@code ["user"]} para compatibilidad futura
- *       con {@code @RolesAllowed}.
  *
+ * Proporciona un endpoint de login que valida credenciales en base de datos
+ * y genera tokens JWT firmados para acceder al WebSocket de chat.
  */
 @Path("/api/auth")
 @Produces(MediaType.APPLICATION_JSON)
@@ -47,18 +31,16 @@ public class AuthController {
     private static final long TOKEN_DURATION_SECONDS = 3600;
 
     /**
-     * Autentica un usuario y genera un token JWT.
+     * Autentica un usuario y genera un token JWT si todo es correcto.
      *
-     * @param request Credenciales del usuario (username + password).
-     * @return HTTP 200 con {@link LoginResponse} si las credenciales son válidas;
-     *         HTTP 401 si no lo son;
-     *         HTTP 400 si faltan campos obligatorios.
+     * @param request Las credenciales del usuario que intenta entrar.
+     * @return El token generado, o un error si fallan las credenciales.
      */
     @POST
     @Path("/login")
     @PermitAll
     public Response login(LoginRequest request) {
-        // Validación de entrada
+        // Comprueba que los campos no estén vacíos
         if (request == null || request.username() == null || request.password() == null
                 || request.username().isBlank() || request.password().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -69,12 +51,12 @@ public class AuthController {
         String username = request.username().trim();
         String password = request.password();
 
-        // Resolución de credenciales desde base de datos
+        // Busca el usuario en la base de datos
         Optional<com.gonzalo.tfg.entity.UserEntity> userOpt = com.gonzalo.tfg.entity.UserEntity.findByUsername(username);
 
         if (userOpt.isEmpty()) {
             Log.warnf("Intento de login con usuario inexistente: '%s'", username);
-            // Prevención de timing attacks en usuarios inexistentes usando un hash ficticio de Bcrypt
+            // Compara contra una contraseña inventada para que tarde lo mismo y no delate que el usuario no existe
             io.quarkus.elytron.security.common.BcryptUtil.matches(password, "$2a$10$xyzxyzxyzxyzxyzxyzxyzuxyzxyzxyzxyzxyzxyzxyzxyzxyzxyz");
             return unauthorized();
         }
@@ -88,7 +70,7 @@ public class AuthController {
                     .build();
         }
 
-        // Comparación timing-safe integrada en BcryptUtil
+        // Comprueba si la contraseña introducida es correcta
         boolean passwordMatch = io.quarkus.elytron.security.common.BcryptUtil.matches(password, user.passwordHash);
 
         if (!passwordMatch) {
@@ -98,14 +80,14 @@ public class AuthController {
 
         String companyId = user.companyId;
 
-        // Generación del token JWT con SmallRye JWT Build
+        // Crea el token con los datos de usuario y empresa
         String token = Jwt.issuer("asistente-contextual-backend")
-                .upn(username)                              // MicroProfile JWT: User Principal Name
-                .subject(username)                          // claim "sub"
-                .claim("company_id", companyId)             // claim personalizado para multi-tenant
-                .groups(Set.of("user"))                     // claim "groups" para @RolesAllowed futuro
+                .upn(username)
+                .subject(username)
+                .claim("company_id", companyId)
+                .groups(Set.of("user"))
                 .expiresIn(TOKEN_DURATION_SECONDS)
-                .sign();                                    // Firma con la clave privada RSA configurada
+                .sign();
 
         Log.infof("Login exitoso para usuario '%s' (tenant: %s). Token generado.",
                 username, companyId);
@@ -118,9 +100,7 @@ public class AuthController {
     // -------------------------------------------------------------------------
 
     /**
-     * Respuesta genérica 401 Unauthorized.
-     * El mensaje NO distingue entre usuario inexistente y contraseña incorrecta
-     * para evitar enumeración de usuarios.
+     * Devuelve error de acceso sin dar pistas de qué falló exactamente.
      */
     private Response unauthorized() {
         return Response.status(Response.Status.UNAUTHORIZED)

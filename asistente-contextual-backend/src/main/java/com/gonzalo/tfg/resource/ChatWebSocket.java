@@ -18,29 +18,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Endpoint WebSocket para el chat del asistente contextual.
- *
- * <h3>Protocolo de autenticación en dos fases</h3>
- * <ol>
- *   <li><strong>Fase 1 — Conexión</strong>: {@code @OnOpen} acepta la conexión
- *       pero la marca como "pendiente de autenticación" en un
- *       {@link ConcurrentHashMap} thread-safe.</li>
- *   <li><strong>Fase 2 — Autenticación</strong>: El primer mensaje de texto debe
- *       empezar por {@code "AUTH:"} seguido del token JWT. Si es válido, la sesión
- *       pasa a estado autenticado. Si no, se cierra con código 4001.</li>
- * </ol>
- *
- * <h3>¿Por qué no usar {@code ?token=xxx} en la URL?</h3>
- * <p>Los query parameters aparecen en logs de proxy, access logs del servidor,
- * historial del navegador y herramientas de debug de red. Enviar el token como
- * primer mensaje WebSocket evita esta exposición.</p>
- *
- * <h3>¿Por qué ConcurrentHashMap y no CDI scope?</h3>
- * <p>El bean {@code @WebSocket} no es {@code @ApplicationScoped} de forma estándar
- * en Quarkus WebSockets Next. Usar un {@link ConcurrentHashMap} estático como
- * campo de instancia garantiza thread-safety sin depender del ciclo de vida CDI.
- * Las claves son los {@code connectionId} internos de Quarkus, que son únicos
- * por conexión.</p>
+ * Gestiona la conexión del chat en tiempo real.
+ * Requiere que el usuario envíe su token antes de poder hablar.
  */
 @WebSocket(path = "/chat/{sessionId}")
 @Blocking
@@ -52,17 +31,13 @@ public class ChatWebSocket {
     @Inject
     JwtValidator jwtValidator;
 
-    /**
-     * Registro de estados de autenticación por conexión.
-     * Clave: {@code WebSocketConnection.id()} — único por conexión.
-     * Valor: {@link AuthState} — inmutable, se reemplaza al autenticar.
-     */
+    /** Guarda si el usuario está autenticado, usando el ID de su conexión. */
     private final ConcurrentHashMap<String, AuthState> estadoConexiones = new ConcurrentHashMap<>();
 
-    /** Prefijo que identifica el mensaje de autenticación. */
+    /** Texto que debe ir antes del token para iniciar sesión. */
     private static final String AUTH_PREFIX = "AUTH:";
 
-    /** Código de cierre WebSocket personalizado: autenticación fallida. */
+    /** Código de error cuando falla el inicio de sesión. */
     private static final int CLOSE_AUTH_FAILED = 4001;
 
     // -------------------------------------------------------------------------
@@ -70,8 +45,11 @@ public class ChatWebSocket {
     // -------------------------------------------------------------------------
 
     /**
-     * Fase 1: Acepta la conexión y la registra como pendiente de autenticación.
-     * No procesa mensajes de chat hasta que el cliente envíe un token válido.
+     * Se ejecuta cuando un usuario se conecta al chat.
+     *
+     * @param sessionId Identificador de la sesión de chat.
+     * @param conexion La conexión actual.
+     * @return Mensaje pidiendo el token al cliente.
      */
     @OnOpen
     public String alAbrir(@PathParam("sessionId") String sessionId, WebSocketConnection conexion) {
@@ -82,12 +60,13 @@ public class ChatWebSocket {
     }
 
     /**
-     * Fase 2 + procesamiento de mensajes.
+     * Recibe los mensajes del usuario.
+     * Si no ha iniciado sesión, valida el token. Si ya está dentro, envía el mensaje al asistente.
      *
-     * <p>Si la conexión NO está autenticada, espera un mensaje {@code AUTH:<token>}.
-     * Si la conexión YA está autenticada, procesa el mensaje como consulta al
-     * asistente, propagando el {@code company_id} del tenant via
-     * {@link TenantContext}.</p>
+     * @param sessionId Identificador de la sesión de chat.
+     * @param mensaje El texto que envía el usuario.
+     * @param conexion La conexión actual.
+     * @return La respuesta del asistente o un mensaje de error.
      */
     @OnTextMessage
     public String alRecibirMensaje(@PathParam("sessionId") String sessionId,
@@ -96,7 +75,7 @@ public class ChatWebSocket {
 
         AuthState estado = estadoConexiones.get(conexion.id());
 
-        // Guarda de seguridad: estado corrupto o conexión no registrada
+        // Si no hay estado de conexión, cerramos para evitar errores
         if (estado == null) {
             Log.errorf("Estado de conexión no encontrado para connectionId: %s. Cerrando.", conexion.id());
             conexion.close().subscribe().with(
@@ -105,21 +84,21 @@ public class ChatWebSocket {
             return "{\"type\":\"error\",\"reason\":\"Estado de conexión corrupto\"}";
         }
 
-        // --- CONEXIÓN NO AUTENTICADA: esperar AUTH:<token> ---
+        // Si aún no ha enviado el token, lo comprobamos
         if (!estado.authenticated()) {
             if (mensaje.startsWith(AUTH_PREFIX)) {
                 String token = mensaje.substring(AUTH_PREFIX.length()).trim();
                 Optional<AuthState> resultado = jwtValidator.validate(token);
 
                 if (resultado.isPresent()) {
-                    // Autenticación exitosa: reemplazar estado en el mapa
+                    // Token válido, marcamos al usuario como conectado
                     estadoConexiones.put(conexion.id(), resultado.get());
                     Log.infof("WebSocket autenticado. user=%s, tenant=%s, sessionId=%s",
                             resultado.get().username(), resultado.get().companyId(), sessionId);
                     return "{\"type\":\"auth_success\",\"username\":\"" +
                             resultado.get().username() + "\"}";
                 } else {
-                    // Token inválido: cerrar conexión con código 4001
+                    // Token falso o caducado, cerramos la conexión
                     Log.warnf("Autenticación fallida para sessionId: %s. Cerrando con 4001.", sessionId);
                     conexion.close().subscribe().with(
                             v -> {},
@@ -128,7 +107,7 @@ public class ChatWebSocket {
                     return "{\"type\":\"auth_failed\",\"reason\":\"Token JWT inválido o expirado\"}";
                 }
             } else {
-                // Primer mensaje sin prefijo AUTH: rechazar
+                // Si no envía el token primero, lo echamos
                 Log.warnf("Primer mensaje sin AUTH: para sessionId: %s. Cerrando con 4001.", sessionId);
                 conexion.close().subscribe().with(
                         v -> {},
@@ -138,7 +117,7 @@ public class ChatWebSocket {
             }
         }
 
-        // --- CONEXIÓN AUTENTICADA: procesar mensaje de chat ---
+        // Si ya está conectado, respondemos a su pregunta
         TenantContext.set(estado.companyId());
         try {
             String respuesta = asistenteService.chat(sessionId, mensaje);
@@ -159,8 +138,9 @@ public class ChatWebSocket {
     }
 
     /**
-     * Limpieza al cerrar la conexión.
-     * Elimina el estado de autenticación del mapa para evitar fugas de memoria.
+     * Se ejecuta cuando el usuario cierra el chat.
+     *
+     * @param conexion La conexión actual.
      */
     @OnClose
     public void alCerrar(WebSocketConnection conexion) {

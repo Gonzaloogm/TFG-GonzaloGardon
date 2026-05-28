@@ -23,13 +23,10 @@ import java.util.stream.Collectors;
 public class PostgresChatMemoryStore implements ChatMemoryStore {
 
     /**
-     * Convierte el memoryId que LangChain4j proporciona a String de forma segura.
+     * Asegura que el identificador de sesión sea texto.
      *
-     * LangChain4j no garantiza que memoryId sea siempre un String: en contextos
-     * CDI sin petición activa (hilos de Vert.x, observadores) puede llegar como
-     * un objeto de scope interno de Quarkus. El cast directo (String) memoryId
-     * producía el toString() del RequestContextState en lugar del UUID real,
-     * causando que todas las búsquedas en BD fallaran silenciosamente.
+     * @param memoryId Identificador que da LangChain4j.
+     * @return El identificador como texto.
      */
     private static String resolverSessionId(Object memoryId) {
         if (memoryId instanceof String s)
@@ -55,23 +52,18 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
     }
 
     /**
-     * Filtra los ToolExecutionResultMessage de turnos de tool-use anteriores
-     * para evitar que Gemini reutilice resultados obsoletos del historial
-     * en lugar de reinvocar la tool.
+     * Borra los resultados antiguos de herramientas del historial.
+     * Esto evita que la IA se confunda con búsquedas anteriores.
      *
-     * Conserva intacto el último turno de tool-use (AiMessage con tool requests
-     * + sus ToolExecutionResultMessage inmediatamente siguientes).
-     * En turnos anteriores, elimina los ToolExecutionResultMessage pero mantiene
-     * el AiMessage correspondiente para que el LLM recuerde que ejecutó una tool.
+     * @param messages Todos los mensajes del chat.
+     * @return Los mensajes limpios sin resultados viejos.
      */
     private List<ChatMessage> filtrarToolResultsAnteriores(List<ChatMessage> messages) {
         if (messages.isEmpty()) {
             return messages;
         }
 
-        // --- Paso 1: localizar el índice donde empieza el ÚLTIMO turno de tool-use ---
-        // El último turno es: el último AiMessage que tiene toolExecutionRequests,
-        // seguido de uno o más ToolExecutionResultMessage consecutivos.
+        // Busca dónde empezó el último uso de herramientas
         int inicioUltimoTurno = -1;
         for (int i = messages.size() - 1; i >= 0; i--) {
             ChatMessage msg = messages.get(i);
@@ -81,20 +73,20 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
             }
         }
 
-        // --- Paso 2: construir la lista filtrada ---
+        // Crea una lista nueva sin los resultados viejos
         List<ChatMessage> resultado = new ArrayList<>(messages.size());
         int filtrados = 0;
 
         for (int i = 0; i < messages.size(); i++) {
             ChatMessage msg = messages.get(i);
 
-            // Si estamos en el último turno de tool-use o después, conservar todo
+            // Si es el uso actual de herramientas, lo guardamos
             if (inicioUltimoTurno != -1 && i >= inicioUltimoTurno) {
                 resultado.add(msg);
                 continue;
             }
 
-            // Fuera del último turno: eliminar ToolExecutionResultMessage
+            // Si es un resultado antiguo de herramienta, lo ignoramos
             if (msg instanceof ToolExecutionResultMessage) {
                 filtrados++;
                 continue;
@@ -150,14 +142,9 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
     }
 
     /**
-     * LangChain4j llama a este método para que el store limpie su caché interna.
-     * La eliminación real de la fila en BD la gestiona
-     * ChatService.eliminarSesion(),
-     * que ya llama a ChatSessionEntity.deleteById() dentro de su propia
-     * transacción.
-     * Repetir el deleteById() aquí causaba una doble eliminación: la primera
-     * devolvía true y la segunda false, haciendo que ChatService reportara
-     * erróneamente que la sesión no existía.
+     * Petición para borrar el historial de una sesión.
+     *
+     * @param memoryId Identificador de la sesión.
      */
     @Override
     public void deleteMessages(Object memoryId) {

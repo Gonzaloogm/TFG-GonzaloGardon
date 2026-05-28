@@ -22,7 +22,7 @@ public class KnowledgeBaseStatsTool {
     // Prompt de la herramienta optimizado para evitar falsos positivos del LLM
     @Tool("Devuelve métricas operativas de la base de conocimiento (conteo, tipos, tecnologías, tamaño). " +
             "Úsala SOLAMENTE cuando el usuario pregunte explícitamente por estadísticas, cantidad de archivos " +
-            "o un resumen general del catálogo. NO la uses para responder preguntas sobre el contenido semántico de los textos.")
+            "o un resumen general del catálogo. NO la uses para responder preguntas sobre el contenido por significado de los textos.")
     public String obtenerEstadisticasBaseConocimiento() {
         Log.info("El motor de IA solicita estadísticas de la base de conocimiento.");
 
