@@ -1175,7 +1175,7 @@
                         // Fase 2: Autenticación fallida
                         if (frame.type === 'auth_failed') {
                             sessionStorage.removeItem('jwt_token');
-                            sessionStorage.removeItem('jwt_username');
+                            sessionStorage.removeItem('jwt_nombreUsuario');
                             window.location.href = 'index.html?error=session_expired';
                             return;
                         }
@@ -1209,7 +1209,7 @@
                     // Cierre con código 4001 = auth fallida
                     if (event.code === 4001) {
                         sessionStorage.removeItem('jwt_token');
-                        sessionStorage.removeItem('jwt_username');
+                        sessionStorage.removeItem('jwt_nombreUsuario');
                         window.location.href = 'index.html?error=session_expired';
                         return;
                     }
@@ -1493,13 +1493,10 @@
             // =====================================================================
             // GESTIÓN DE DOCUMENTOS
             // =====================================================================
-            async function fetchDocuments() {
+            async function cargarDocumentos() {
                 try {
-                    // 1. Recuperamos el token de donde lo hayas guardado en el Login
-                    // IMPORTANTE: Asegúrate de que "token" es la clave correcta en tu localStorage
-                    const token = localStorage.getItem("token");
+                    const token = sessionStorage.getItem("jwt_token");
 
-                    // 2. Inyectamos la acreditación Zero-Trust en la petición
                     const response = await fetch('/api/documentos', {
                         method: 'GET',
                         headers: {
@@ -1509,10 +1506,8 @@
                     });
 
                     if (!response.ok) {
-                        // Manejo específico para errores de seguridad
                         if (response.status === 401 || response.status === 403) {
                             console.error('Acceso denegado. El token ha expirado o no es válido.');
-                            // Aquí podrías redirigir al usuario: window.location.href = '/login';
                         }
                         throw new Error('HTTP ' + response.status);
                     }
@@ -1543,29 +1538,23 @@
 
                         const docSize = typeof doc === 'string' ? 0 : (doc.tamanio_bytes || doc.size || doc.sizeBytes || 0);
 
-                        /*
-                         * B1/S1: escHTML() en cleanName antes de interpolarlo.
-                         * El botón de borrar usa addEventListener, no onclick inline,
-                         * para evitar la inyección de código a través del nombre del archivo.
-                         */
                         item.innerHTML = `
-                                            <div class="doc-info" title="${escHTML(cleanName)}">
-                                                <div class="name">${escHTML(cleanName)}</div>
-                                                <div class="meta">${escHTML(tipoDoc)} • ${escHTML(formatBytes(docSize))}</div>
-                                            </div>
-                                            <button class="delete-btn" title="Eliminar documento">
-                                                <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="16" width="16" xmlns="http://www.w3.org/2000/svg">
-                                                    <polyline points="3 6 5 6 21 6"></polyline>
-                                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                    <line x1="10" y1="11" x2="10" y2="17"></line>
-                                                    <line x1="14" y1="11" x2="14" y2="17"></line>
-                                                </svg>
-                                            </button>
-                                        `;
+                <div class="doc-info" title="${escHTML(cleanName)}">
+                    <div class="name">${escHTML(cleanName)}</div>
+                    <div class="meta">${escHTML(tipoDoc)} • ${escHTML(formatBytes(docSize))}</div>
+                </div>
+                <button class="delete-btn" title="Eliminar documento">
+                    <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="16" width="16" xmlns="http://www.w3.org/2000/svg">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                </button>
+            `;
 
-                        // B1/B4: addEventListener con el valor real — sin interpolación en onclick
                         item.querySelector('.delete-btn').addEventListener('click', () =>
-                            deleteDocument(cleanName));
+                            borrarDocumento(cleanName));
 
                         DOM.documentsList.appendChild(item);
                     });
@@ -1575,19 +1564,23 @@
                 }
             }
 
-            async function deleteDocument(fileName) {
-                // B1: confirmarAccion usa textContent internamente — seguro
+            async function borrarDocumento(fileName) {
                 confirmarAccion(
                     'Eliminar documento',
                     `¿Estás seguro de que deseas eliminar el documento "${fileName}"? Esta acción no se puede deshacer.`,
                     async () => {
                         try {
+                            const token = sessionStorage.getItem("jwt_token");
                             const response = await fetch('/api/documentos/' + encodeURIComponent(fileName), {
-                                method: 'DELETE'
+                                method: 'DELETE',
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
                             });
+
                             if (response.ok || response.status === 204) {
                                 mostrarToast(`Documento eliminado.`, 'success');
-                                fetchDocuments();
+                                cargarDocumentos();
                             } else {
                                 mostrarToast('No se pudo eliminar el documento.', 'error');
                             }
@@ -1610,7 +1603,7 @@
             // =====================================================================
             // UPLOAD DE DOCUMENTOS
             // =====================================================================
-            async function handleFileUpload(file) {
+            async function manejarSubidaArchivo(file) {
                 if (!file) return;
 
                 DOM.uploadStatus.innerHTML = '<div class="spinner"></div> Subiendo...';
@@ -1623,18 +1616,21 @@
                 }));
 
                 try {
+                    const token = sessionStorage.getItem("jwt_token");
                     const response = await fetch('/api/documentos/upload', {
                         method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
                         body: formData
                     });
 
                     if (response.ok) {
                         DOM.uploadStatus.innerHTML = "<span style='color: var(--primary-color)'>Subido correctamente</span>";
-                        fetchDocuments();
+                        cargarDocumentos();
                         mostrarToast('Documento subido correctamente.', 'success');
                     } else {
                         const error = await response.json();
-                        // escHTML en el mensaje de error del servidor
                         DOM.uploadStatus.innerHTML = `<span style='color: var(--danger-color)'>Error: ${escHTML(error.error || 'desconocido')}</span>`;
                     }
                 } catch (error) {
@@ -1661,18 +1657,18 @@
                         App.socket.close();
                     }
                     sessionStorage.removeItem('jwt_token');
-                    sessionStorage.removeItem('jwt_username');
+                    sessionStorage.removeItem('jwt_nombreUsuario');
                     window.location.href = 'index.html';
                 });
 
                 // Recargar documentos
-                document.getElementById('refresh-docs-btn').addEventListener('click', fetchDocuments);
+                document.getElementById('refresh-docs-btn').addEventListener('click', cargarDocumentos);
 
                 // Subir documento
                 document.getElementById('upload-btn').addEventListener('click', () => DOM.fileInput.click());
                 DOM.fileInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
-                    await handleFileUpload(file);
+                    await manejarSubidaArchivo(file);
                     e.target.value = ''; // reset del input
                 });
 
@@ -1728,7 +1724,7 @@
                 }
 
                 registrarEventos();
-                fetchDocuments();
+                cargarDocumentos();
                 cargarListaChats();
 
                 if (!App.idSesionActual) crearNuevoChat();
@@ -1738,7 +1734,7 @@
                  * para poder limpiarlas con clearInterval si fuera necesario.
                  * Los intervalos se mantienen iguales al original para no alterar comportamiento.
                  */
-                App.intervalos.push(setInterval(fetchDocuments, 30000));
+                App.intervalos.push(setInterval(cargarDocumentos, 30000));
                 App.intervalos.push(setInterval(cargarListaChats, 10000));
 
                 DOM.msgInput.focus();

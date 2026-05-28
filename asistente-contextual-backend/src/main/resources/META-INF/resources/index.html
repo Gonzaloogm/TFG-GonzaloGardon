@@ -201,8 +201,8 @@
             const loginIcon = document.getElementById('login-icon');
             const loginText = document.getElementById('login-text');
             const errorMsg = document.getElementById('error-msg');
-            const usernameInput = document.getElementById('username');
-            const passwordInput = document.getElementById('password');
+            const nombreUsuarioInput = document.getElementById('username');
+            const contrasenaInput = document.getElementById('password');
 
             // Si viene redirigido desde chat.html con ?error=session_expired
             const params = new URLSearchParams(window.location.search);
@@ -223,8 +223,8 @@
 
             function setLoading(loading) {
                 btnLogin.disabled = loading;
-                usernameInput.disabled = loading;
-                passwordInput.disabled = loading;
+                nombreUsuarioInput.disabled = loading;
+                contrasenaInput.disabled = loading;
                 if (loading) {
                     loginIcon.style.display = 'none';
                     loginText.innerHTML = '<div style="width:16px;height:16px;border:2px solid white;border-bottom-color:transparent;border-radius:50%;display:inline-block;animation:rotation 1s linear infinite;"></div> Autenticando...';
@@ -235,11 +235,11 @@
             }
 
             async function iniciarSesion() {
-                const username = usernameInput.value.trim();
-                const password = passwordInput.value;
+                const nombreUsuario = nombreUsuarioInput.value.trim();
+                const contrasena = contrasenaInput.value;
 
                 // Validación básica en cliente
-                if (!username || !password) {
+                if (!nombreUsuario || !contrasena) {
                     mostrarError('Introduce tu usuario y contraseña.');
                     return;
                 }
@@ -252,21 +252,21 @@
                     const response = await fetch('/api/auth/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
+                        body: JSON.stringify({ nombreUsuario, contrasena })
                     });
 
                     if (response.ok) {
                         const data = await response.json();
                         // Guardar token y username en sessionStorage
                         sessionStorage.setItem('jwt_token', data.token);
-                        sessionStorage.setItem('jwt_username', username);
+                        sessionStorage.setItem('jwt_nombreUsuario', nombreUsuario);
                         // Redirigir al chat
                         window.location.href = 'chat.html';
                     } else if (response.status === 401) {
                         setLoading(false);
                         mostrarError('Credenciales incorrectas.');
-                        passwordInput.value = '';
-                        passwordInput.focus();
+                        contrasenaInput.value = '';
+                        contrasenaInput.focus();
                     } else {
                         setLoading(false);
                         const errData = await response.json().catch(() => null);
@@ -280,15 +280,15 @@
 
             // Event listeners
             btnLogin.addEventListener('click', iniciarSesion);
-            passwordInput.addEventListener('keydown', (e) => {
+            contrasenaInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') { e.preventDefault(); iniciarSesion(); }
             });
-            usernameInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); passwordInput.focus(); }
+            nombreUsuarioInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); contrasenaInput.focus(); }
             });
 
             // Focus en el primer campo al cargar
-            usernameInput.focus();
+            nombreUsuarioInput.focus();
         })();
     </script>
 </body>

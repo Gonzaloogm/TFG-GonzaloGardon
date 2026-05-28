@@ -8,13 +8,13 @@ package com.gonzalo.tfg.security;
  * garantizando visibilidad thread-safe sin sincronización adicional.
  *
  * @param authenticated {@code true} si el cliente ya envió un token JWT válido.
- * @param username      Nombre de usuario extraído del claim {@code sub} del JWT.
- * @param companyId     Identificador del tenant extraído del claim {@code company_id}.
+ * @param nombreUsuario Nombre de usuario extraído del claim {@code sub} del JWT.
+ * @param idEmpresa     Identificador del tenant extraído del claim {@code company_id}.
  */
 public record AuthState(
         boolean authenticated,
-        String username,
-        String companyId) {
+        String nombreUsuario,
+        String idEmpresa) {
 
     /**
      * Crea un estado pendiente de autenticación.

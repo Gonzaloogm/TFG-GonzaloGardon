@@ -39,60 +39,60 @@ public class AuthController {
     @POST
     @Path("/login")
     @PermitAll
-    public Response login(LoginRequest request) {
+    public Response login(PeticionLogin request) {
         // Comprueba que los campos no estén vacíos
-        if (request == null || request.username() == null || request.password() == null
-                || request.username().isBlank() || request.password().isBlank()) {
+        if (request == null || request.nombreUsuario() == null || request.contrasena() == null
+                || request.nombreUsuario().isBlank() || request.contrasena().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(new ErrorResponse("Los campos 'username' y 'password' son obligatorios"))
+                    .entity(new RespuestaError("Los campos 'nombreUsuario' y 'contrasena' son obligatorios"))
                     .build();
         }
 
-        String username = request.username().trim();
-        String password = request.password();
+        String nombreUsuario = request.nombreUsuario().trim();
+        String contrasena = request.contrasena();
 
         // Busca el usuario en la base de datos
-        Optional<com.gonzalo.tfg.entity.UserEntity> userOpt = com.gonzalo.tfg.entity.UserEntity.findByUsername(username);
+        Optional<com.gonzalo.tfg.entity.UserEntity> userOpt = com.gonzalo.tfg.entity.UserEntity.findByNombreUsuario(nombreUsuario);
 
         if (userOpt.isEmpty()) {
-            Log.warnf("Intento de login con usuario inexistente: '%s'", username);
+            Log.warnf("Intento de login con usuario inexistente: '%s'", nombreUsuario);
             // Compara contra una contraseña inventada para que tarde lo mismo y no delate que el usuario no existe
-            io.quarkus.elytron.security.common.BcryptUtil.matches(password, "$2a$10$xyzxyzxyzxyzxyzxyzxyzuxyzxyzxyzxyzxyzxyzxyzxyzxyzxyz");
+            io.quarkus.elytron.security.common.BcryptUtil.matches(contrasena, "$2a$10$xyzxyzxyzxyzxyzxyzxyzuxyzxyzxyzxyzxyzxyzxyzxyzxyzxyz");
             return unauthorized();
         }
 
         com.gonzalo.tfg.entity.UserEntity user = userOpt.get();
 
-        if (!user.active) {
-            Log.warnf("Intento de login con cuenta desactivada: '%s'", username);
+        if (!user.activo) {
+            Log.warnf("Intento de login con cuenta desactivada: '%s'", nombreUsuario);
             return Response.status(Response.Status.FORBIDDEN)
-                    .entity(new ErrorResponse("Cuenta desactivada"))
+                    .entity(new RespuestaError("Cuenta desactivada"))
                     .build();
         }
 
         // Comprueba si la contraseña introducida es correcta
-        boolean passwordMatch = io.quarkus.elytron.security.common.BcryptUtil.matches(password, user.passwordHash);
+        boolean passwordMatch = io.quarkus.elytron.security.common.BcryptUtil.matches(contrasena, user.hashContrasena);
 
         if (!passwordMatch) {
-            Log.warnf("Contraseña incorrecta para usuario: '%s'", username);
+            Log.warnf("Contraseña incorrecta para usuario: '%s'", nombreUsuario);
             return unauthorized();
         }
 
-        String companyId = user.companyId;
+        String idEmpresa = user.idEmpresa;
 
         // Crea el token con los datos de usuario y empresa
         String token = Jwt.issuer("asistente-contextual-backend")
-                .upn(username)
-                .subject(username)
-                .claim("company_id", companyId)
+                .upn(nombreUsuario)
+                .subject(nombreUsuario)
+                .claim("company_id", idEmpresa)
                 .groups(Set.of("user"))
                 .expiresIn(TOKEN_DURATION_SECONDS)
                 .sign();
 
         Log.infof("Login exitoso para usuario '%s' (tenant: %s). Token generado.",
-                username, companyId);
+                nombreUsuario, idEmpresa);
 
-        return Response.ok(new LoginResponse(token, TOKEN_DURATION_SECONDS)).build();
+        return Response.ok(new RespuestaLogin(token, TOKEN_DURATION_SECONDS)).build();
     }
 
     // -------------------------------------------------------------------------
@@ -104,19 +104,19 @@ public class AuthController {
      */
     private Response unauthorized() {
         return Response.status(Response.Status.UNAUTHORIZED)
-                .entity(new ErrorResponse("Credenciales inválidas"))
+                .entity(new RespuestaError("Credenciales inválidas"))
                 .build();
     }
 
     /** Payload de la petición de login. */
-    public record LoginRequest(String username, String password) {
+    public record PeticionLogin(String nombreUsuario, String contrasena) {
     }
 
     /** Payload de la respuesta de login exitoso. */
-    public record LoginResponse(String token, long expiresIn) {
+    public record RespuestaLogin(String token, long expiresIn) {
     }
 
     /** Payload de error genérico. */
-    public record ErrorResponse(String error) {
+    public record RespuestaError(String error) {
     }
 }

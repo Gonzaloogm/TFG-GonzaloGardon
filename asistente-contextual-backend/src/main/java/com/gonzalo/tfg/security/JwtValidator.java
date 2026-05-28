@@ -42,18 +42,18 @@ public class JwtValidator {
         try {
             JsonWebToken jwt = jwtParser.parse(token.trim());
 
-            String username = jwt.getSubject();
-            String companyId = jwt.getClaim("company_id");
+            String nombreUsuario = jwt.getSubject();
+            String idEmpresa = jwt.getClaim("company_id");
 
-            if (username == null || companyId == null) {
+            if (nombreUsuario == null || idEmpresa == null) {
                 Log.warnf("JWT válido pero sin claims obligatorios: sub=%s, company_id=%s",
-                        username, companyId);
+                        nombreUsuario, idEmpresa);
                 return Optional.empty();
             }
 
             Log.infof("JWT validado correctamente para usuario '%s' (tenant: %s)",
-                    username, companyId);
-            return Optional.of(new AuthState(true, username, companyId));
+                    nombreUsuario, idEmpresa);
+            return Optional.of(new AuthState(true, nombreUsuario, idEmpresa));
 
         } catch (ParseException e) {
             Log.warnf("Fallo en la validación del JWT: %s", e.getMessage());

@@ -94,9 +94,9 @@ public class ChatWebSocket {
                     // Token válido, marcamos al usuario como conectado
                     estadoConexiones.put(conexion.id(), resultado.get());
                     Log.infof("WebSocket autenticado. user=%s, tenant=%s, sessionId=%s",
-                            resultado.get().username(), resultado.get().companyId(), sessionId);
-                    return "{\"type\":\"auth_success\",\"username\":\"" +
-                            resultado.get().username() + "\"}";
+                            resultado.get().nombreUsuario(), resultado.get().idEmpresa(), sessionId);
+                    return "{\"type\":\"auth_success\",\"nombreUsuario\":\"" +
+                            resultado.get().nombreUsuario() + "\"}";
                 } else {
                     // Token falso o caducado, cerramos la conexión
                     Log.warnf("Autenticación fallida para sessionId: %s. Cerrando con 4001.", sessionId);
@@ -118,7 +118,7 @@ public class ChatWebSocket {
         }
 
         // Si ya está conectado, respondemos a su pregunta
-        TenantContext.set(estado.companyId());
+        TenantContext.set(estado.idEmpresa());
         try {
             String respuesta = asistenteService.chat(sessionId, mensaje);
             return respuesta.replaceAll("(?s)<thinking>.*?</thinking>\\s*", "");

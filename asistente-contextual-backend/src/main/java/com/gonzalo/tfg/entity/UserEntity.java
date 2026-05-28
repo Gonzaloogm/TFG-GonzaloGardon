@@ -20,29 +20,29 @@ public class UserEntity extends PanacheEntityBase {
     @GeneratedValue
     public UUID id;
 
-    @Column(unique = true, nullable = false)
-    public String username;
+    @Column(name = "username", unique = true, nullable = false)
+    public String nombreUsuario;
 
-    @Column(nullable = false)
-    public String passwordHash;
+    @Column(name = "password_hash", nullable = false)
+    public String hashContrasena;
 
-    @Column(nullable = false)
-    public String companyId;
+    @Column(name = "company_id", nullable = false)
+    public String idEmpresa;
 
-    @Column(nullable = false)
-    public boolean active = true;
+    @Column(name = "active", nullable = false)
+    public boolean activo = true;
 
-    @Column(nullable = false, updatable = false)
-    public LocalDateTime createdAt;
+    @Column(name = "created_at", nullable = false, updatable = false)
+    public LocalDateTime fechaCreacion;
 
     @PrePersist
     protected void onCreate() {
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+        if (fechaCreacion == null) {
+            fechaCreacion = LocalDateTime.now();
         }
     }
 
-    public static Optional<UserEntity> findByUsername(String username) {
-        return find("username", username).firstResultOptional();
+    public static Optional<UserEntity> findByNombreUsuario(String nombreUsuario) {
+        return find("nombreUsuario", nombreUsuario).firstResultOptional();
     }
 }

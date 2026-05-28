@@ -50,10 +50,10 @@ public class UserAdminResource {
     void crearAdminSiNecesario() {
         if (UserEntity.count() == 0) {
             UserEntity admin = new UserEntity();
-            admin.username = "admin";
-            admin.passwordHash = BcryptUtil.bcryptHash(bootstrapPassword);
-            admin.companyId = "empresa-alpha";
-            admin.active = true;
+            admin.nombreUsuario = "admin";
+            admin.hashContrasena = BcryptUtil.bcryptHash(bootstrapPassword);
+            admin.idEmpresa = "empresa-alpha";
+            admin.activo = true;
             admin.persist();
             Log.warn("Bootstrap: Creado usuario administrador ('admin'). Cambia la contraseña en producción.");
         }
@@ -66,7 +66,7 @@ public class UserAdminResource {
     private void validarAdminKey(String key) {
         if (key == null || adminKey == null) {
             throw new WebApplicationException(Response.status(Response.Status.FORBIDDEN)
-                    .entity(new AuthController.ErrorResponse("Acceso denegado: admin key no proporcionada"))
+                    .entity(new AuthController.RespuestaError("Acceso denegado: admin key no proporcionada"))
                     .build());
         }
         
@@ -76,105 +76,105 @@ public class UserAdminResource {
                 
         if (!match) {
             throw new WebApplicationException(Response.status(Response.Status.FORBIDDEN)
-                    .entity(new AuthController.ErrorResponse("Acceso denegado: admin key inválida"))
+                    .entity(new AuthController.RespuestaError("Acceso denegado: admin key inválida"))
                     .build());
         }
     }
 
     @GET
-    public List<UserResponseDTO> listUsers(@HeaderParam("X-Admin-Key") String key) {
+    public List<RespuestaUsuarioDTO> listUsers(@HeaderParam("X-Admin-Key") String key) {
         validarAdminKey(key);
         return UserEntity.<UserEntity>listAll().stream()
-                .map(u -> new UserResponseDTO(u.username, u.companyId, u.active, u.createdAt.toString()))
+                .map(u -> new RespuestaUsuarioDTO(u.nombreUsuario, u.idEmpresa, u.activo, u.fechaCreacion.toString()))
                 .collect(Collectors.toList());
     }
 
     @POST
     @Transactional
-    public Response createUser(@HeaderParam("X-Admin-Key") String key, CreateUserDTO request) {
+    public Response createUser(@HeaderParam("X-Admin-Key") String key, CrearUsuarioDTO request) {
         validarAdminKey(key);
         
-        if (request.username == null || request.password == null || request.companyId == null
-                || request.username.isBlank() || request.password.isBlank() || request.companyId.isBlank()) {
+        if (request.nombreUsuario() == null || request.contrasena() == null || request.idEmpresa() == null
+                || request.nombreUsuario().isBlank() || request.contrasena().isBlank() || request.idEmpresa().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(new AuthController.ErrorResponse("Faltan campos obligatorios: username, password, companyId"))
+                    .entity(new AuthController.RespuestaError("Faltan campos obligatorios: nombreUsuario, contrasena, idEmpresa"))
                     .build();
         }
 
-        if (UserEntity.findByUsername(request.username).isPresent()) {
+        if (UserEntity.findByNombreUsuario(request.nombreUsuario()).isPresent()) {
             return Response.status(Response.Status.CONFLICT)
-                    .entity(new AuthController.ErrorResponse("El usuario ya existe"))
+                    .entity(new AuthController.RespuestaError("El usuario ya existe"))
                     .build();
         }
 
         UserEntity user = new UserEntity();
-        user.username = request.username.trim();
-        user.passwordHash = BcryptUtil.bcryptHash(request.password);
-        user.companyId = request.companyId.trim();
-        user.active = true;
+        user.nombreUsuario = request.nombreUsuario().trim();
+        user.hashContrasena = BcryptUtil.bcryptHash(request.contrasena());
+        user.idEmpresa = request.idEmpresa().trim();
+        user.activo = true;
         user.persist();
 
         return Response.status(Response.Status.CREATED)
-                .entity(new UserResponseDTO(user.username, user.companyId, user.active, user.createdAt.toString()))
+                .entity(new RespuestaUsuarioDTO(user.nombreUsuario, user.idEmpresa, user.activo, user.fechaCreacion.toString()))
                 .build();
     }
 
     @DELETE
-    @Path("/{username}")
+    @Path("/{nombreUsuario}")
     @Transactional
-    public Response deleteUser(@HeaderParam("X-Admin-Key") String key, @PathParam("username") String username) {
+    public Response deleteUser(@HeaderParam("X-Admin-Key") String key, @PathParam("nombreUsuario") String nombreUsuario) {
         validarAdminKey(key);
-        UserEntity user = UserEntity.findByUsername(username)
+        UserEntity user = UserEntity.findByNombreUsuario(nombreUsuario)
                 .orElseThrow(() -> new WebApplicationException(Response.status(Response.Status.NOT_FOUND)
-                        .entity(new AuthController.ErrorResponse("Usuario no encontrado")).build()));
+                        .entity(new AuthController.RespuestaError("Usuario no encontrado")).build()));
         
-        user.active = false; // Soft delete
+        user.activo = false; // Soft delete
         user.persist();
         return Response.noContent().build();
     }
 
     @PUT
-    @Path("/{username}/reset-password")
+    @Path("/{nombreUsuario}/reset-password")
     @Transactional
     public Response resetPassword(@HeaderParam("X-Admin-Key") String key, 
-                                  @PathParam("username") String username, 
-                                  ResetPasswordDTO request) {
+                                  @PathParam("nombreUsuario") String nombreUsuario, 
+                                  RestablecerContrasenaDTO request) {
         validarAdminKey(key);
         
-        if (request.newPassword == null || request.newPassword.isBlank()) {
+        if (request.nuevaContrasena() == null || request.nuevaContrasena().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(new AuthController.ErrorResponse("La nueva contraseña es obligatoria"))
+                    .entity(new AuthController.RespuestaError("La nueva contraseña es obligatoria"))
                     .build();
         }
         
-        UserEntity user = UserEntity.findByUsername(username)
+        UserEntity user = UserEntity.findByNombreUsuario(nombreUsuario)
                 .orElseThrow(() -> new WebApplicationException(Response.status(Response.Status.NOT_FOUND)
-                        .entity(new AuthController.ErrorResponse("Usuario no encontrado")).build()));
+                        .entity(new AuthController.RespuestaError("Usuario no encontrado")).build()));
                         
-        user.passwordHash = BcryptUtil.bcryptHash(request.newPassword);
+        user.hashContrasena = BcryptUtil.bcryptHash(request.nuevaContrasena());
         user.persist();
         return Response.noContent().build();
     }
 
     @PUT
-    @Path("/{username}/reactivar")
+    @Path("/{nombreUsuario}/reactivar")
     @Transactional
-    public Response reactivarUsuario(@PathParam("username") String username,
+    public Response reactivarUsuario(@PathParam("nombreUsuario") String nombreUsuario,
                                      @HeaderParam("X-Admin-Key") String adminKey) {
         validarAdminKey(adminKey);
 
-        UserEntity user = UserEntity.findByUsername(username)
+        UserEntity user = UserEntity.findByNombreUsuario(nombreUsuario)
                 .orElseThrow(() -> new WebApplicationException(
                         Response.status(404)
                                 .entity("{\"error\":\"Usuario no encontrado\"}")
                                 .type(MediaType.APPLICATION_JSON).build()));
 
-        user.active = true;
+        user.activo = true;
         return Response.ok("{\"message\":\"Usuario reactivado\"}").build();
     }
 
     // --- DTOs inline ---
-    public record UserResponseDTO(String username, String companyId, boolean active, String createdAt) {}
-    public record CreateUserDTO(String username, String password, String companyId) {}
-    public record ResetPasswordDTO(String newPassword) {}
+    public record RespuestaUsuarioDTO(String nombreUsuario, String idEmpresa, boolean activo, String fechaCreacion) {}
+    public record CrearUsuarioDTO(String nombreUsuario, String contrasena, String idEmpresa) {}
+    public record RestablecerContrasenaDTO(String nuevaContrasena) {}
 }

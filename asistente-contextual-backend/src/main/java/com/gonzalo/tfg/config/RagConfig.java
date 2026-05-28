@@ -105,9 +105,9 @@ public class RagConfig {
             String input = normalizarTexto(inputOriginal);
 
             // Obtiene la empresa actual para aislar sus documentos
-            String companyId = TenantContext.get();
-            Filter filtroTenant = (companyId != null)
-                    ? MetadataFilterBuilder.metadataKey("company_id").isEqualTo(companyId)
+            String idEmpresa = TenantContext.get();
+            Filter filtroTenant = (idEmpresa != null)
+                    ? MetadataFilterBuilder.metadataKey("company_id").isEqualTo(idEmpresa)
                     : null;
             // Si es un saludo corto, no busca en documentos para ahorrar tiempo
             boolean esSaludo = input.split("\\s+").length <= 3 &&

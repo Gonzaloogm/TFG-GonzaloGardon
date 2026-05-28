@@ -10,10 +10,10 @@ public final class TenantContext {
     /**
      * Guarda el ID de la empresa para la petición actual.
      *
-     * @param companyId Identificador de la empresa.
+     * @param idEmpresa Identificador de la empresa.
      */
-    public static void set(String companyId) {
-        CURRENT_TENANT.set(companyId);
+    public static void set(String idEmpresa) {
+        CURRENT_TENANT.set(idEmpresa);
     }
 
     /**
