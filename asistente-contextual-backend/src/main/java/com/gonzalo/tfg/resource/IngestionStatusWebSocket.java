@@ -5,9 +5,12 @@ import io.quarkus.logging.Log;
 import io.quarkus.websockets.next.OnOpen;
 import io.quarkus.websockets.next.OpenConnections;
 import io.quarkus.websockets.next.WebSocket;
+import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
+
+import java.util.List;
 
 @WebSocket(path = "/ingestion-status")
 @ApplicationScoped
@@ -30,8 +33,12 @@ public class IngestionStatusWebSocket {
     }
 
     public void onIngestionStatus(@Observes IngestionStatusEvent event) {
-        if (openConnections.listAll().isEmpty()) {
-            Log.debugf("Sin clientes suscritos a /ingestion-status, evento descartado: fase %d", event.phase());
+        List<WebSocketConnection> suscriptores = openConnections.listAll().stream()
+                .filter(conn -> conn.handshakeRequest().path().contains("/ingestion-status"))
+                .collect(java.util.stream.Collectors.toList());
+
+        if (suscriptores.isEmpty()) {
+            Log.debugf("Sin clientes en /ingestion-status, evento descartado: fase %d", event.phase());
             return;
         }
 
@@ -42,15 +49,15 @@ public class IngestionStatusWebSocket {
                 escaparJson(event.message()),
                 escaparJson(event.status()));
 
-        openConnections.listAll().forEach(conn -> {
+        suscriptores.forEach(conn -> {
             try {
                 conn.sendTextAndAwait(json);
             } catch (Exception e) {
-                Log.warnf("No se pudo notificar a la conexión %s: %s", conn.id(), e.getMessage());
+                Log.warnf("No se pudo notificar a /ingestion-status conexión %s: %s",
+                        conn.id(), e.getMessage());
             }
         });
     }
-
     private static String escaparJson(String valor) {
         if (valor == null)
             return "";

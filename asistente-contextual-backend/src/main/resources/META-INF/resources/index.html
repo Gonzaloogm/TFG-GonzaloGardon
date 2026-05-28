@@ -114,8 +114,43 @@
             gap: 8px;
         }
 
-        .login-btn:hover {
+        .login-btn:hover:not(:disabled) {
             background-color: var(--primary-hover);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .error-msg {
+            margin-top: 16px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            text-align: center;
+            display: none;
+        }
+
+        .error-msg.visible {
+            display: block;
+        }
+
+        .error-msg.error {
+            background: #fdf2f2;
+            color: #b91c1c;
+            border: 1px solid #fde8e8;
+        }
+
+        .error-msg.info {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -136,46 +171,125 @@
         <p>Portal de Empleados - Acceso Seguro</p>
 
         <div class="form-group">
-            <label for="username">Correo Institucional</label>
-            <input type="email" id="username" placeholder="Tu correo electrónico corporativo...">
+            <label for="username">Usuario</label>
+            <input type="text" id="username" placeholder="Tu nombre de usuario..." autocomplete="username">
         </div>
 
         <div class="form-group">
             <label for="password">Contraseña</label>
-            <input type="password" id="password" placeholder="Tu contraseña...">
+            <input type="password" id="password" placeholder="Tu contraseña..." autocomplete="current-password">
         </div>
 
-        <button class="login-btn" onclick="iniciarSesion()">
-            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round"
+        <button class="login-btn" id="login-btn">
+            <svg id="login-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round"
                 stroke-linejoin="round" height="18" width="18" xmlns="http://www.w3.org/2000/svg">
                 <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
                 <polyline points="10 17 15 12 10 7"></polyline>
                 <line x1="15" y1="12" x2="3" y2="12"></line>
             </svg>
-            Iniciar Sesión
+            <span id="login-text">Iniciar Sesión</span>
         </button>
+
+        <div class="error-msg" id="error-msg"></div>
     </div>
 
     <script>
-        function iniciarSesion() {
-            const btn = document.querySelector('.login-btn');
-            btn.innerHTML = '<div style="width: 16px; height: 16px; border: 2px solid white; border-bottom-color: transparent; border-radius: 50%; display: inline-block; box-sizing: border-box; animation: rotation 1s linear infinite;"></div> Autenticando...';
-            btn.style.opacity = '0.9';
-            btn.style.pointerEvents = 'none';
+        (function () {
+            'use strict';
 
-            setTimeout(() => {
-                window.location.href = 'chat.html';
-            }, 800);
-        }
+            const btnLogin = document.getElementById('login-btn');
+            const loginIcon = document.getElementById('login-icon');
+            const loginText = document.getElementById('login-text');
+            const errorMsg = document.getElementById('error-msg');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
 
-        const style = document.createElement('style');
-        style.innerHTML = `
-            @keyframes rotation {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
+            // Si viene redirigido desde chat.html con ?error=session_expired
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('error') === 'session_expired') {
+                errorMsg.textContent = 'Tu sesión ha expirado. Inicia sesión de nuevo.';
+                errorMsg.className = 'error-msg info visible';
             }
-        `;
-        document.head.appendChild(style);
+
+            // Si ya tiene token válido en sessionStorage, redirigir directamente
+            if (sessionStorage.getItem('jwt_token')) {
+                window.location.href = 'chat.html';
+            }
+
+            function mostrarError(mensaje, tipo) {
+                errorMsg.textContent = mensaje;
+                errorMsg.className = 'error-msg ' + (tipo || 'error') + ' visible';
+            }
+
+            function setLoading(loading) {
+                btnLogin.disabled = loading;
+                usernameInput.disabled = loading;
+                passwordInput.disabled = loading;
+                if (loading) {
+                    loginIcon.style.display = 'none';
+                    loginText.innerHTML = '<div style="width:16px;height:16px;border:2px solid white;border-bottom-color:transparent;border-radius:50%;display:inline-block;animation:rotation 1s linear infinite;"></div> Autenticando...';
+                } else {
+                    loginIcon.style.display = '';
+                    loginText.textContent = 'Iniciar Sesión';
+                }
+            }
+
+            async function iniciarSesion() {
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+
+                // Validación básica en cliente
+                if (!username || !password) {
+                    mostrarError('Introduce tu usuario y contraseña.');
+                    return;
+                }
+
+                // Ocultar errores previos
+                errorMsg.className = 'error-msg';
+                setLoading(true);
+
+                try {
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Guardar token y username en sessionStorage
+                        sessionStorage.setItem('jwt_token', data.token);
+                        sessionStorage.setItem('jwt_username', username);
+                        // Redirigir al chat
+                        window.location.href = 'chat.html';
+                    } else if (response.status === 401) {
+                        setLoading(false);
+                        mostrarError('Credenciales incorrectas.');
+                        passwordInput.value = '';
+                        passwordInput.focus();
+                    } else {
+                        setLoading(false);
+                        const errData = await response.json().catch(() => null);
+                        mostrarError(errData?.error || 'Error del servidor. Inténtalo de nuevo.');
+                    }
+                } catch (e) {
+                    setLoading(false);
+                    mostrarError('Error de conexión. Inténtalo de nuevo.');
+                }
+            }
+
+            // Event listeners
+            btnLogin.addEventListener('click', iniciarSesion);
+            passwordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); iniciarSesion(); }
+            });
+            usernameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); passwordInput.focus(); }
+            });
+
+            // Focus en el primer campo al cargar
+            usernameInput.focus();
+        })();
     </script>
 </body>
 

@@ -21,6 +21,7 @@ import io.quarkus.logging.Log;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.event.Event;
 import com.gonzalo.tfg.model.IngestionStatusEvent;
+import com.gonzalo.tfg.security.TenantContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -263,6 +264,12 @@ public class DocumentIngestionService {
             Map<String, String> metadatosMap = parsearMetadatos(metadatosJson);
             metadatosMap.put("documento_id", idDocumento);
             metadatosMap.put("nombre_archivo", nombreOriginal);
+
+            // Multi-tenant: asociar el documento al tenant activo (si hay uno)
+            String tenantId = TenantContext.get();
+            if (tenantId != null) {
+                metadatosMap.put("company_id", tenantId);
+            }
 
             Document documento = FileSystemDocumentLoader.loadDocument(
                     rutaFichero,

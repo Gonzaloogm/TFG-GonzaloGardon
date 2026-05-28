@@ -15,9 +15,12 @@ import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
 import dev.langchain4j.rag.content.aggregator.ContentAggregator;
 import dev.langchain4j.rag.content.injector.DefaultContentInjector;
 import dev.langchain4j.store.embedding.EmbeddingStore;
+import dev.langchain4j.store.embedding.filter.Filter;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
+
+import com.gonzalo.tfg.security.TenantContext;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
 
@@ -170,6 +173,13 @@ public class RagConfig {
             String inputOriginal = query.text();
             // M2: Normalizamos desde el principio para toda la lógica del enrutador
             String input = normalizarTexto(inputOriginal);
+
+            // Multi-tenant: leer el company_id del TenantContext (ThreadLocal)
+            // Si es null, no se aplica filtro de tenant (modo desarrollo sin auth)
+            String companyId = TenantContext.get();
+            Filter filtroTenant = (companyId != null)
+                    ? MetadataFilterBuilder.metadataKey("company_id").isEqualTo(companyId)
+                    : null;
             // Detección de mensajes cortos sin contenido semántico (saludos, cortesías)
             // Para estos no tiene sentido buscar en vectores — evita RAG Hijacking
             boolean esSaludo = input.split("\\s+").length <= 3 &&
@@ -216,12 +226,18 @@ public class RagConfig {
                 if (input.contains(nombreNormalizado) || input.contains(nombreBase)) {
                     Log.infof("Enrutador: Coincidencia detectada para [%s]", doc.nombre());
 
+                    // Filtro de archivo, opcionalmente compuesto con filtro de tenant
+                    Filter filtroArchivo = MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(doc.nombre());
+                    Filter filtroFinal = (filtroTenant != null)
+                            ? Filter.and(filtroArchivo, filtroTenant)
+                            : filtroArchivo;
+
                     recuperadoresSeleccionados.add(EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
                             .maxResults(10)
                             .minScore(0.65)
-                            .filter(MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(doc.nombre()))
+                            .filter(filtroFinal)
                             .build());
 
                     recuperadoresSeleccionados.add(
@@ -243,13 +259,19 @@ public class RagConfig {
             double umbralDinamico = Math.max(0.65, calcularUmbralDinamico(queryParaKeywords));
             Log.debugf("Búsqueda global activa. Umbral dinámico: %.2f", umbralDinamico);
 
-            return Arrays.asList(
+            // Búsqueda global: aplicar filtro de tenant si está disponible
+            EmbeddingStoreContentRetriever.EmbeddingStoreContentRetrieverBuilder globalBuilder =
                     EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
                             .maxResults(8)
-                            .minScore(umbralDinamico)
-                            .build(),
+                            .minScore(umbralDinamico);
+            if (filtroTenant != null) {
+                globalBuilder.filter(filtroTenant);
+            }
+
+            return Arrays.asList(
+                    globalBuilder.build(),
                     postgresKeywordRetriever.crearRetriever(null, queryParaKeywords));
         };
 

@@ -846,6 +846,11 @@
                 <div class="status-dot"></div>
                 <span id="status-text">Desconectado</span>
             </div>
+            <button id="logout-btn" title="Cerrar sesión"
+                style="background:transparent;border:none;cursor:pointer;color:var(--text-secondary);font-size:13px;padding:6px 10px;border-radius:4px;transition:background 0.2s;margin-left:12px;white-space:nowrap;"
+                onmouseover="this.style.background='var(--border-color)'" onmouseout="this.style.background='transparent'">
+                ← Salir
+            </button>
         </div>
 
         <div id="chat"></div>
@@ -931,7 +936,8 @@
                 cierreIntencional: false,   // B2: distingue cierre intencional vs. error
                 intervalos: [],      // B3: guarda refs para limpiarlas si fuera necesario
                 MAX_CHARS: 4000,
-                cargandoChats: false
+                cargandoChats: false,
+                authCompleted: false  // JWT: bloquea mensajes de chat hasta auth_success
             };
 
             // =====================================================================
@@ -1131,30 +1137,82 @@
             // =====================================================================
             function connectWebSocket(idSesion) {
                 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                App.authCompleted = false; // Reset para cada nueva conexión
                 App.socket = new WebSocket(`${protocol}//${location.host}/chat/${idSesion}`);
 
                 App.socket.onopen = () => {
-                    DOM.statusText.textContent = 'Conectado';
-                    DOM.connStatus.className = 'connected';
+                    DOM.statusText.textContent = 'Autenticando...';
+                    DOM.connStatus.className = 'disconnected'; // naranja hasta auth_success
                 };
 
                 App.socket.onmessage = (event) => {
-                    hideTyping();
-                    setEnviando(false); // A2: re-habilita el input al recibir respuesta
-
+                    // --- Manejo de frames de protocolo JWT ---
                     try {
                         const frame = JSON.parse(event.data);
+
+                        // Fase 1: El servidor pide autenticación
+                        if (frame.type === 'auth_required') {
+                            const token = sessionStorage.getItem('jwt_token');
+                            if (!token) {
+                                // Sin token: redirigir al login
+                                window.location.href = 'index.html?error=session_expired';
+                                return;
+                            }
+                            // Enviar token como primer mensaje
+                            App.socket.send('AUTH:' + token);
+                            return;
+                        }
+
+                        // Fase 2: Autenticación exitosa
+                        if (frame.type === 'auth_success') {
+                            App.authCompleted = true;
+                            DOM.statusText.textContent = 'Conectado';
+                            DOM.connStatus.className = 'connected';
+                            setEnviando(false);
+                            return;
+                        }
+
+                        // Fase 2: Autenticación fallida
+                        if (frame.type === 'auth_failed') {
+                            sessionStorage.removeItem('jwt_token');
+                            sessionStorage.removeItem('jwt_username');
+                            window.location.href = 'index.html?error=session_expired';
+                            return;
+                        }
+
+                        // Frame legacy (session_ready) — ignorar
                         if (frame.type === 'session_ready') return;
-                    } catch (_) { /* respuesta normal del asistente */ }
+
+                        // Frame de error genérico del servidor
+                        if (frame.type === 'error') {
+                            hideTyping();
+                            setEnviando(false);
+                            log('Sistema', frame.reason || 'Error del servidor.', 'error');
+                            return;
+                        }
+                    } catch (_) { /* respuesta normal del asistente (no es JSON) */ }
+
+                    // --- Mensajes normales de chat (solo si autenticado) ---
+                    if (!App.authCompleted) return;
+
+                    hideTyping();
+                    setEnviando(false); // A2: re-habilita el input al recibir respuesta
 
                     const textoLimpio = limpiarRespuesta(event.data);
                     log('Asistente', textoLimpio || 'Procesando...', 'assistant');
                     cargarListaChats();
                 };
 
-                App.socket.onclose = () => {
+                App.socket.onclose = (event) => {
                     DOM.statusText.textContent = 'Desconectado';
                     DOM.connStatus.className = 'disconnected';
+                    // Cierre con código 4001 = auth fallida
+                    if (event.code === 4001) {
+                        sessionStorage.removeItem('jwt_token');
+                        sessionStorage.removeItem('jwt_username');
+                        window.location.href = 'index.html?error=session_expired';
+                        return;
+                    }
                     // B2: solo muestra error si el cierre NO fue intencional
                     if (!App.cierreIntencional) {
                         log('Sistema', 'Conexión cerrada inesperadamente.', 'error');
@@ -1576,6 +1634,17 @@
                 // Sidebar toggle
                 document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
 
+                // Cerrar sesión
+                document.getElementById('logout-btn').addEventListener('click', () => {
+                    if (App.socket) {
+                        App.cierreIntencional = true;
+                        App.socket.close();
+                    }
+                    sessionStorage.removeItem('jwt_token');
+                    sessionStorage.removeItem('jwt_username');
+                    window.location.href = 'index.html';
+                });
+
                 // Recargar documentos
                 document.getElementById('refresh-docs-btn').addEventListener('click', fetchDocuments);
 
@@ -1624,6 +1693,12 @@
             // INICIALIZACIÓN
             // =====================================================================
             window.addEventListener('load', () => {
+                // Guard de sesión: si no hay token, redirigir al login
+                if (!sessionStorage.getItem('jwt_token')) {
+                    window.location.href = 'index.html';
+                    return;
+                }
+
                 // Configurar marked.js
                 marked.setOptions({ breaks: true, gfm: true });
 
