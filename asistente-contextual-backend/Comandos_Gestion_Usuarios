@@ -1,0 +1,33 @@
+Crear Usuario:
+curl -X POST http://localhost:8080/api/admin/users \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: clave-secreta-admin-cambiar-en-produccion" \
+  -d '{
+    "nombreUsuario":"gonzalo",
+    "contrasena":"miPassword123",
+    "idEmpresa":"empresa-alpha"
+  }'
+
+Reactivar Usuario:
+  curl -X PUT http://localhost:8080/api/admin/users/gonzalo/reactivar \
+    -H "X-Admin-Key: clave-secreta-admin-cambiar-en-produccion"
+
+Log in:
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombreUsuario":"gonzalo",
+    "contrasena":"miPassword123"
+  }'
+
+Resetear contrasena:
+curl -X PUT http://localhost:8080/api/admin/users/gonzalo/reset-password \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: clave-secreta-admin-cambiar-en-produccion" \
+  -d '{
+    "nuevaContrasena":"miPassword123"
+  }'
+
+Eliminar Usuario:
+curl -X DELETE http://localhost:8080/api/admin/users/gonzalo \
+  -H "X-Admin-Key: clave-secreta-admin-cambiar-en-produccion"
