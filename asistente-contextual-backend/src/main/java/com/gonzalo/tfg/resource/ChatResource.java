@@ -10,6 +10,8 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.jwt.JsonWebToken;
+
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -22,8 +24,13 @@ public class ChatResource {
     @Inject
     ChatService chatService;
 
+    @Inject
+    JsonWebToken jwt;
+
     @GET
     public List<ChatSessionSummaryDTO> obtenerSesiones() {
+        String nombreUsuario = jwt.getName();
+
         return ChatSessionEntity.<ChatSessionEntity>listAll(Sort.by("updatedAt").descending())
                 .stream()
                 .map(entity -> new ChatSessionSummaryDTO(entity.sessionId, entity.updatedAt, entity.titulo))

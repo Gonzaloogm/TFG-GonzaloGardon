@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 /*
  Entidad JPA para la persistencia de sesiones de chat.
- Almacena el historial de mensajes serializado en formato JSON para cada sesión de usuario.
+ Almacena el historial de mensajes y aísla la información por usuario.
  */
 @Entity
 @Table(name = "chat_sessions")
@@ -18,6 +18,9 @@ public class ChatSessionEntity extends PanacheEntityBase {
     @Id
     @Column(name = "session_id")
     public String sessionId;
+
+    @Column(name = "user_id", nullable = false)
+    public String userId;
 
     @Column(name = "messages_json", columnDefinition = "TEXT")
     public String messagesJson;
@@ -36,13 +39,12 @@ public class ChatSessionEntity extends PanacheEntityBase {
 
     /*
      Constructor para inicializar una nueva sesión o actualizar una existente.
-     
-     @param sessionId Identificador único de la sesión (ej. ID de WebSocket).
-     @param messagesJson Contenido del historial de chat en formato JSON.
      */
-    public ChatSessionEntity(String sessionId, String messagesJson) {
+    public ChatSessionEntity(String sessionId, String userId, String messagesJson, String titulo) {
         this.sessionId = sessionId;
+        this.userId = userId;
         this.messagesJson = messagesJson;
+        this.titulo = titulo;
         this.updatedAt = LocalDateTime.now();
     }
 }

@@ -12,6 +12,8 @@ import dev.langchain4j.store.memory.chat.ChatMemoryStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import io.quarkus.logging.Log;
+import org.eclipse.microprofile.jwt.JsonWebToken;
+import jakarta.inject.Inject;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -21,6 +23,9 @@ import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class PostgresChatMemoryStore implements ChatMemoryStore {
+
+    @Inject
+    JsonWebToken jwt;
 
     /**
      * Asegura que el identificador de sesión sea texto.
@@ -112,7 +117,8 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
         if (entity == null) {
             entity = new ChatSessionEntity();
             entity.sessionId = sessionId;
-            entity.titulo = "Sin nombre";
+            entity.titulo = "Nueva conversación";
+            entity.userId = (jwt != null && jwt.getName() != null) ? jwt.getName() : "usuario_desconocido";
         }
 
         List<ChatMessage> mensajesLimpios = messages.stream()

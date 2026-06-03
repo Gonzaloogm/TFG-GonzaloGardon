@@ -1308,8 +1308,13 @@
                 App.cargandoChats = true;
                 if (!DOM.chatList) return;
                 try {
-                    const response = await fetch('/api/chats');
-                    if (!response.ok) throw new Error('Error cargando chats');
+                    const token = localStorage.getItem('jwt_token');
+
+                    const response = await fetch('/api/chats', {
+                        headers: { 'Authorization': 'Bearer ' + sessionStorage.getItem('jwt_token') }
+                    });
+
+                    if (!response.ok) throw new Error('Error cargando chats: ' + response.status);
                     const sesiones = await response.json();
 
                     DOM.chatList.innerHTML = '';
@@ -1339,20 +1344,20 @@
                         const fechaSafe = escHTML(fechaFormateada);
 
                         item.innerHTML = `
-                        <div class="chat-info" style="flex: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; cursor: pointer;">
-                            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="18" width="18" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                            </svg>
-                            <div style="display: flex; flex-direction: column; overflow: hidden;">
-                                <span class="chat-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${tituloSafe}</span>
-                                <span class="chat-meta"  style="font-size: 11px; color: var(--text-secondary);">${fechaSafe}</span>
-                            </div>
-                        </div>
-                        <div class="chat-actions" style="display: flex; gap: 5px; opacity: 0.7;">
-                            <button class="btn-rename" title="Renombrar" style="background: none; border: none; cursor: pointer; padding: 4px;">✏️</button>
-                            <button class="btn-delete" title="Borrar"    style="background: none; border: none; cursor: pointer; padding: 4px;">🗑️</button>
-                        </div>
-                    `;
+                                            <div class="chat-info" style="flex: 1; display: flex; align-items: center; gap: 10px; overflow: hidden; cursor: pointer;">
+                                                <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="18" width="18" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                                </svg>
+                                                <div style="display: flex; flex-direction: column; overflow: hidden;">
+                                                    <span class="chat-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${tituloSafe}</span>
+                                                    <span class="chat-meta"  style="font-size: 11px; color: var(--text-secondary);">${fechaSafe}</span>
+                                                </div>
+                                            </div>
+                                            <div class="chat-actions" style="display: flex; gap: 5px; opacity: 0.7;">
+                                                <button class="btn-rename" title="Renombrar" style="background: none; border: none; cursor: pointer; padding: 4px;">✏️</button>
+                                                <button class="btn-delete" title="Borrar"    style="background: none; border: none; cursor: pointer; padding: 4px;">🗑️</button>
+                                            </div>
+                                        `;
 
                         // B4: event listeners en lugar de onclick inline con strings interpoladas
                         item.querySelector('.chat-info').addEventListener('click', () =>
@@ -1372,7 +1377,7 @@
                     });
                 } catch (error) {
                     console.error('Error en cargarListaChats:', error);
-                }finally {
+                } finally {
                     App.cargandoChats = false;
                 }
             }
@@ -1387,7 +1392,10 @@
                         try {
                             const response = await fetch(`/api/chats/${id}/titulo`, {
                                 method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': 'Bearer ' + sessionStorage.getItem('jwt_token')
+                                },
                                 body: JSON.stringify(nuevoTitulo)
                             });
                             if (response.ok) {
@@ -1410,7 +1418,10 @@
                     '¿Estás seguro de que deseas eliminar esta conversación? Esta acción no se puede deshacer.',
                     async () => {
                         try {
-                            const response = await fetch(`/api/chats/${id}`, { method: 'DELETE' });
+                            const response = await fetch(`/api/chats/${id}`, {
+                                method: 'DELETE',
+                                headers: { 'Authorization': 'Bearer ' + sessionStorage.getItem('jwt_token') }
+                            });
                             if (response.ok || response.status === 204) {
                                 mostrarToast('Conversación eliminada.', 'success');
                                 cargarListaChats();
@@ -1439,13 +1450,28 @@
 
                 // U1: Indicador de carga mientras llega el historial
                 DOM.chat.innerHTML = `
-                <div class="historial-loading">
-                    <div class="spinner"></div>
-                    <span>Cargando historial...</span>
-                </div>`;
+                                        <div class="historial-loading">
+                                            <div class="spinner"></div>
+                                            <span>Cargando historial...</span>
+                                        </div>`;
 
                 try {
-                    const res = await fetch(`/api/chats/${id}/historial`);
+                    // Recuperar el token del almacenamiento (ajusta 'jwt_token' a tu clave real)
+                    const token = sessionStorage.getItem('jwt_token');
+
+                    // INYECCIÓN DEL TOKEN JWT AQUÍ
+                    const res = await fetch(`/api/chats/${id}/historial`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (!res.ok) {
+                        throw new Error(`Error HTTP: ${res.status} - ${res.statusText}`);
+                    }
+
                     const history = await res.json();
 
                     App.idSesionActual = id;
@@ -1481,9 +1507,9 @@
                     log('Sistema', 'Historial de conversación recuperado.', 'system');
 
                 } catch (e) {
-                    console.error(e);
+                    console.error("Fallo de red o autorización al cargar historial:", e);
                     DOM.chat.innerHTML = '';
-                    log('Sistema', 'Error al recuperar el historial.', 'error');
+                    log('Sistema', 'Error al recuperar el historial. Verifica tu sesión.', 'error');
                 } finally {
                     // B5: re-habilitar input siempre, aunque haya fallado la carga
                     setEnviando(false);
