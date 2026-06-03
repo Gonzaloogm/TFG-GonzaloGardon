@@ -31,3 +31,7 @@ curl -X PUT http://localhost:8080/api/admin/users/gonzalo/reset-password \
 Eliminar Usuario:
 curl -X DELETE http://localhost:8080/api/admin/users/gonzalo \
   -H "X-Admin-Key: clave-secreta-admin-cambiar-en-produccion"
+
+Listar usuarios:
+curl -X GET http://localhost:8080/api/admin/users \
+  -H "X-Admin-Key: clave-secreta-admin-cambiar-en-produccion"
