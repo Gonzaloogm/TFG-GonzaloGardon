@@ -1,13 +1,14 @@
 package com.gonzalo.tfg.tools;
 
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolMemoryId;
+import com.gonzalo.tfg.security.ContextoSesion;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingMatch;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingStore;
-import com.gonzalo.tfg.security.TenantContext;
 import dev.langchain4j.store.embedding.filter.Filter;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import io.quarkus.logging.Log;
@@ -41,14 +42,14 @@ public class SemanticSearchTool {
     private static final double MIN_RELEVANCIA = 0.65;
 
     @Tool("SOLO úsala si el contexto inyectado automáticamente no es suficiente para responder. Realiza una búsqueda semántica auxiliar en la base de conocimiento...")
-    public String buscarFragmentosSemanticamente(String consulta) {
+    public String buscarFragmentosSemanticamente(String consulta, @ToolMemoryId Object memoryId) {
         Log.infof("El motor de IA solicita búsqueda semántica directa para: '%s'", consulta);
 
         if (consulta == null || consulta.isBlank()) {
             return "La consulta no puede estar vacía.";
         }
 
-        Filter filtroEmpresa = filtroEmpresaActual();
+        Filter filtroEmpresa = filtroEmpresa(memoryId);
         if (filtroEmpresa == null) {
             return "No hay una empresa asociada a la sesión; no se puede buscar en la base de conocimiento.";
         }
@@ -102,7 +103,8 @@ public class SemanticSearchTool {
     }
 
     @Tool("SOLO úsala si el usuario pide buscar en un documento específico Y la información no está ya presente en tu contexto actual...")
-    public String buscarEnDocumentoConcreto(String nombreDocumento, String consulta) {
+    public String buscarEnDocumentoConcreto(String nombreDocumento, String consulta,
+            @ToolMemoryId Object memoryId) {
         Log.infof("Búsqueda semántica en documento '%s' para: '%s'", nombreDocumento, consulta);
 
         if (nombreDocumento == null || nombreDocumento.isBlank()) {
@@ -112,7 +114,7 @@ public class SemanticSearchTool {
             return "La consulta no puede estar vacía.";
         }
 
-        Filter filtroEmpresa = filtroEmpresaActual();
+        Filter filtroEmpresa = filtroEmpresa(memoryId);
         if (filtroEmpresa == null) {
             return "No hay una empresa asociada a la sesión; no se puede buscar en la base de conocimiento.";
         }
@@ -149,9 +151,9 @@ public class SemanticSearchTool {
         }
     }
 
-    /** Filtro por la empresa de la sesión actual, o null si no hay empresa. */
-    private static Filter filtroEmpresaActual() {
-        String idEmpresa = TenantContext.get();
+    /** Filtro por la empresa de la conversación, o null si no hay empresa. */
+    private static Filter filtroEmpresa(Object memoryId) {
+        String idEmpresa = ContextoSesion.empresaDe(memoryId);
         return idEmpresa == null ? null : MetadataFilterBuilder.metadataKey("company_id").isEqualTo(idEmpresa);
     }
 }

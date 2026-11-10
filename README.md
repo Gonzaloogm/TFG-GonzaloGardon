@@ -60,36 +60,51 @@ Asegúrate de tener instalado en tu sistema:
 ### 2. Clonar el repositorio
 Descarga el código fuente en tu máquina local:
 ```bash
-git clone [https://github.com/tu-usuario/asistente-contextual-backend.git](https://github.com/Gonzaloogm/asistente-contextual-backend.git)
-cd asistente-contextual-backend
+git clone https://github.com/Gonzaloogm/TFG-GonzaloGardon.git
+cd TFG-GonzaloGardon/asistente-contextual-backend
 ```
 
 ### 3. Configurar variables de entorno
-El sistema necesita tu clave de Gemini para funcionar. Expórtala en tu terminal para no subirla al código fuente de forma accidental:
+La configuración sensible se lee de un fichero `.env` en la carpeta `asistente-contextual-backend/`, que Quarkus carga automáticamente al arrancar y que está ignorado por git. Créalo a partir de la plantilla y escribe tu clave de Gemini:
 
-**En Linux / macOS:**
 ```bash
-export QUARKUS_LANGCHAIN4J_AI_GEMINI_CHAT_MODEL_API_KEY="tu_clave_api_aqui"
+cp .env.example .env
 ```
 
-**En Windows (PowerShell):**
-```powershell
-$env:QUARKUS_LANGCHAIN4J_AI_GEMINI_CHAT_MODEL_API_KEY="tu_clave_api_aqui"
+```dotenv
+GEMINI_API_KEY=tu_clave_api_aqui
 ```
 
-### 4. Levantar la Base de Datos
+*(También puedes exportar las variables en la terminal; si existen en ambos sitios, prevalece la variable de entorno.)*
+
+En modo desarrollo no hace falta nada más. Para ejecutar en modo producción (`java -jar`) son **obligatorias** además estas variables; si faltan, la aplicación no arranca:
+
+| Variable | Uso |
+|---|---|
+| `ADMIN_KEY` | Clave de la API de administración de usuarios (cabecera `X-Admin-Key`) |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Contraseña del usuario `admin` que se crea si la tabla de usuarios está vacía |
+| `DB_URL`, `DB_USER`, `DB_PASSWORD` | Opcionales: conexión a PostgreSQL (por defecto, la base local del paso 5) |
+| `JWT_PRIVATE_KEY_LOCATION`, `JWT_PUBLIC_KEY_LOCATION` | Opcionales: rutas de las claves JWT (por defecto, `keys/`) |
+
+### 4. Generar las claves JWT
+El backend firma los tokens de sesión con un par de claves RSA que **no** se incluye en el repositorio. Genéralas una vez (se crean en `keys/`, carpeta ignorada por git):
+```bash
+./scripts/generar-claves-jwt.sh
+```
+*(Nunca coloques la clave privada en `src/main/resources/META-INF/resources`: Quarkus sirve esa carpeta como web pública.)*
+
+### 5. Levantar la Base de Datos
 Inicia el contenedor de PostgreSQL con la extensión pgvector configurada en el proyecto:
-```
-bash
+```bash
 docker run -d \
   --name pgvector-postgres \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=postgres \
+  -e POSTGRES_DB=asistente_contextual \
   -p 5432:5432 \
   pgvector/pgvector:pg16
 ```
-*(Nota: Asegúrate de que las credenciales y el puerto coincidan con tu configuración de `application.properties`. Si prefieres usar los Dev Services integrados de Quarkus, este paso se realiza automáticamente al iniciar la aplicación).*
+*(Nota: las credenciales y el nombre de la base de datos coinciden con los valores por defecto de `application.properties`.)*
 
 ---
 

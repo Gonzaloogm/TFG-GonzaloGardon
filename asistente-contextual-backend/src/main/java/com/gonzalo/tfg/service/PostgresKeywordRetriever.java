@@ -46,7 +46,8 @@ public class PostgresKeywordRetriever {
 
                 String sql = "SELECT text, metadata FROM embeddings " +
                              "WHERE websearch_to_tsquery('spanish', ?) @@ to_tsvector('spanish', text) " +
-                             "AND metadata @> ?::jsonb ";
+                             // La columna metadata la crea pgvector como json: se convierte a jsonb para @>
+                             "AND metadata::jsonb @> ?::jsonb ";
                 
                 sql += "ORDER BY ts_rank(to_tsvector('spanish', text), websearch_to_tsquery('spanish', ?)) DESC " +
                        "LIMIT 15";
