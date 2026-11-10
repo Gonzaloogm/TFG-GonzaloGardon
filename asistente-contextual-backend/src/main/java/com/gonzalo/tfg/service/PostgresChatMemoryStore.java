@@ -12,7 +12,7 @@ import dev.langchain4j.store.memory.chat.ChatMemoryStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import io.quarkus.logging.Log;
-import org.eclipse.microprofile.jwt.JsonWebToken;
+import com.gonzalo.tfg.security.TenantContext;
 import jakarta.inject.Inject;
 
 import java.time.LocalDateTime;
@@ -24,8 +24,6 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class PostgresChatMemoryStore implements ChatMemoryStore {
 
-    @Inject
-    JsonWebToken jwt;
 
     /**
      * Asegura que el identificador de sesión sea texto.
@@ -118,7 +116,12 @@ public class PostgresChatMemoryStore implements ChatMemoryStore {
             entity = new ChatSessionEntity();
             entity.sessionId = sessionId;
             entity.titulo = "Nueva conversación";
-            entity.userId = (jwt != null && jwt.getName() != null) ? jwt.getName() : "usuario_desconocido";
+            // El WebSocket no lleva JWT de petición HTTP: el usuario lo fija ChatWebSocket
+            String usuario = TenantContext.getUsuario();
+            if (usuario == null) {
+                throw new IllegalStateException("No se puede crear una sesión de chat sin usuario autenticado.");
+            }
+            entity.userId = usuario;
         }
 
         List<ChatMessage> mensajesLimpios = messages.stream()

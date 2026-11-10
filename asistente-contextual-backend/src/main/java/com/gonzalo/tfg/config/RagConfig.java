@@ -27,7 +27,6 @@ import jakarta.inject.Inject;
 import com.gonzalo.tfg.service.DocumentIngestionService;
 import com.gonzalo.tfg.service.PostgresKeywordRetriever;
 import com.gonzalo.tfg.model.DocumentoDTO;
-import jakarta.inject.Named;
 
 import java.text.Normalizer;
 import java.util.*;
@@ -106,9 +105,12 @@ public class RagConfig {
 
             // Obtiene la empresa actual para aislar sus documentos
             String idEmpresa = TenantContext.get();
-            Filter filtroTenant = (idEmpresa != null)
-                    ? MetadataFilterBuilder.metadataKey("company_id").isEqualTo(idEmpresa)
-                    : null;
+            // Sin empresa no se recupera nada: nunca se busca en los documentos de todas
+            if (idEmpresa == null) {
+                Log.warn("Enrutador: consulta sin empresa en contexto. Sin recuperación.");
+                return Collections.emptyList();
+            }
+            Filter filtroTenant = MetadataFilterBuilder.metadataKey("company_id").isEqualTo(idEmpresa);
             // Si es un saludo corto, no busca en documentos para ahorrar tiempo
             boolean esSaludo = input.split("\\s+").length <= 3 &&
                     input.matches(
@@ -155,9 +157,7 @@ public class RagConfig {
 
                     // Aplica filtro por documento y empresa
                     Filter filtroArchivo = MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(doc.nombre());
-                    Filter filtroFinal = (filtroTenant != null)
-                            ? Filter.and(filtroArchivo, filtroTenant)
-                            : filtroArchivo;
+                    Filter filtroFinal = Filter.and(filtroArchivo, filtroTenant);
 
                     recuperadoresSeleccionados.add(EmbeddingStoreContentRetriever.builder()
                             .embeddingStore(storeVectores)
@@ -168,7 +168,7 @@ public class RagConfig {
                             .build());
 
                     recuperadoresSeleccionados.add(
-                            postgresKeywordRetriever.crearRetriever(doc.nombre(), queryParaKeywords));
+                            postgresKeywordRetriever.crearRetriever(doc.nombre(), queryParaKeywords, idEmpresa));
                 }
             }
 
@@ -188,14 +188,12 @@ public class RagConfig {
                             .embeddingStore(storeVectores)
                             .embeddingModel(modeloVectores)
                             .maxResults(8)
-                            .minScore(umbralDinamico);
-            if (filtroTenant != null) {
-                globalBuilder.filter(filtroTenant);
-            }
+                            .minScore(umbralDinamico)
+                            .filter(filtroTenant);
 
             return Arrays.asList(
                     globalBuilder.build(),
-                    postgresKeywordRetriever.crearRetriever(null, queryParaKeywords));
+                    postgresKeywordRetriever.crearRetriever(null, queryParaKeywords, idEmpresa));
         };
 
         // Calcula la distancia matemática entre el texto y los documentos
@@ -377,37 +375,5 @@ public class RagConfig {
 
         double cosineSim = dotProduct / denominador;
         return (cosineSim + 1.0) / 2.0; // Adapta el resultado a rango positivo
-    }
-
-    // -------------------------------------------------------------------------
-    // MÉTODOS PÚBLICOS DE UTILIDAD
-    // -------------------------------------------------------------------------
-
-    public static ContentRetriever createFilteredRetriever(
-            EmbeddingStore<TextSegment> embeddingStore,
-            EmbeddingModel embeddingModel,
-            String filterKey,
-            String filterValue) {
-        return EmbeddingStoreContentRetriever.builder()
-                .embeddingStore(embeddingStore)
-                .embeddingModel(embeddingModel)
-                .maxResults(7)
-                .minScore(0.68)
-                .filter(MetadataFilterBuilder.metadataKey(filterKey).isEqualTo(filterValue))
-                .build();
-    }
-
-    @Produces
-    @ApplicationScoped
-    @Named("lightRetriever")
-    public ContentRetriever lightContentRetriever(
-            EmbeddingStore<TextSegment> store,
-            EmbeddingModel model) {
-        return EmbeddingStoreContentRetriever.builder()
-                .embeddingStore(store)
-                .embeddingModel(model)
-                .maxResults(2) // Solo 2 fragmentos en vez de 5
-                .minScore(0.75) // Umbral más exigente
-                .build();
     }
 }

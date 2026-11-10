@@ -4,6 +4,7 @@ import com.gonzalo.tfg.security.AuthState;
 import com.gonzalo.tfg.security.JwtValidator;
 import com.gonzalo.tfg.security.TenantContext;
 import com.gonzalo.tfg.service.AsistenteService;
+import com.gonzalo.tfg.service.ChatService;
 import io.quarkus.logging.Log;
 import io.quarkus.websockets.next.OnClose;
 import io.quarkus.websockets.next.OnOpen;
@@ -15,6 +16,7 @@ import io.smallrye.common.annotation.Blocking;
 import jakarta.inject.Inject;
 
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -30,6 +32,9 @@ public class ChatWebSocket {
 
     @Inject
     JwtValidator jwtValidator;
+
+    @Inject
+    ChatService chatService;
 
     /** Guarda si el usuario está autenticado, usando el ID de su conexión. */
     private final ConcurrentHashMap<String, AuthState> estadoConexiones = new ConcurrentHashMap<>();
@@ -90,6 +95,21 @@ public class ChatWebSocket {
                 String token = mensaje.substring(AUTH_PREFIX.length()).trim();
                 Optional<AuthState> resultado = jwtValidator.validate(token);
 
+                if (resultado.isPresent() && !esSessionIdValido(sessionId)) {
+                    Log.warnf("sessionId con formato inválido: %s. Cerrando.", sessionId);
+                    cerrar(conexion);
+                    return "{\"type\":\"auth_failed\",\"reason\":\"Identificador de sesión inválido\"}";
+                }
+
+                if (resultado.isPresent()
+                        && !chatService.puedeUsarSesion(sessionId, resultado.get().nombreUsuario())) {
+                    // La sesión existe y es de otro usuario: no se revela nada de ella
+                    Log.warnf("Usuario '%s' intentó abrir la sesión ajena %s. Cerrando.",
+                            resultado.get().nombreUsuario(), sessionId);
+                    cerrar(conexion);
+                    return "{\"type\":\"auth_failed\",\"reason\":\"Sesión no disponible\"}";
+                }
+
                 if (resultado.isPresent()) {
                     // Token válido, marcamos al usuario como conectado
                     estadoConexiones.put(conexion.id(), resultado.get());
@@ -119,6 +139,7 @@ public class ChatWebSocket {
 
         // Si ya está conectado, respondemos a su pregunta
         TenantContext.set(estado.idEmpresa());
+        TenantContext.setUsuario(estado.nombreUsuario());
         try {
             String respuesta = asistenteService.chat(sessionId, mensaje);
             return respuesta.replaceAll("(?s)<thinking>.*?</thinking>\\s*", "");
@@ -135,6 +156,23 @@ public class ChatWebSocket {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /** El sessionId lo genera el cliente con crypto.randomUUID(): se exige formato UUID. */
+    private static boolean esSessionIdValido(String sessionId) {
+        try {
+            UUID.fromString(sessionId);
+            return true;
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return false;
+        }
+    }
+
+    private void cerrar(WebSocketConnection conexion) {
+        estadoConexiones.remove(conexion.id());
+        conexion.close().subscribe().with(
+                v -> {},
+                err -> Log.warnf("Error cerrando conexión: %s", err.getMessage()));
     }
 
     /**

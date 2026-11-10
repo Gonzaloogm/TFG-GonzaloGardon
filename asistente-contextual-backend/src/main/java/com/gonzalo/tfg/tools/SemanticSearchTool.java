@@ -7,6 +7,9 @@ import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingMatch;
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingStore;
+import com.gonzalo.tfg.security.TenantContext;
+import dev.langchain4j.store.embedding.filter.Filter;
+import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -45,6 +48,11 @@ public class SemanticSearchTool {
             return "La consulta no puede estar vacía.";
         }
 
+        Filter filtroEmpresa = filtroEmpresaActual();
+        if (filtroEmpresa == null) {
+            return "No hay una empresa asociada a la sesión; no se puede buscar en la base de conocimiento.";
+        }
+
         try {
             Embedding vectorConsulta = modeloVectores.embed(consulta).content();
 
@@ -52,6 +60,7 @@ public class SemanticSearchTool {
                     .queryEmbedding(vectorConsulta)
                     .maxResults(MAX_RESULTADOS)
                     .minScore(MIN_RELEVANCIA)
+                    .filter(filtroEmpresa)
                     .build();
 
             List<EmbeddingMatch<TextSegment>> coincidencias = storeVectores.search(peticion).matches();
@@ -103,12 +112,17 @@ public class SemanticSearchTool {
             return "La consulta no puede estar vacía.";
         }
 
+        Filter filtroEmpresa = filtroEmpresaActual();
+        if (filtroEmpresa == null) {
+            return "No hay una empresa asociada a la sesión; no se puede buscar en la base de conocimiento.";
+        }
+
         try {
             Embedding vectorConsulta = modeloVectores.embed(consulta).content();
 
-            dev.langchain4j.store.embedding.filter.Filter filtroDoc = dev.langchain4j.store.embedding.filter.MetadataFilterBuilder
-                    .metadataKey("nombre_archivo")
-                    .isEqualTo(nombreDocumento);
+            Filter filtroDoc = Filter.and(
+                    MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(nombreDocumento),
+                    filtroEmpresa);
 
             EmbeddingSearchRequest peticion = EmbeddingSearchRequest.builder()
                     .queryEmbedding(vectorConsulta)
@@ -133,5 +147,11 @@ public class SemanticSearchTool {
             Log.errorf("Error en búsqueda por documento: %s", e.getMessage());
             return "Error al buscar en el documento: " + e.getMessage();
         }
+    }
+
+    /** Filtro por la empresa de la sesión actual, o null si no hay empresa. */
+    private static Filter filtroEmpresaActual() {
+        String idEmpresa = TenantContext.get();
+        return idEmpresa == null ? null : MetadataFilterBuilder.metadataKey("company_id").isEqualTo(idEmpresa);
     }
 }

@@ -57,8 +57,15 @@ public class DocumentIngestionService {
     /** Lista principal donde se guardan todos los documentos. */
     private final Map<String, DocumentoDTO> registroDocumentos = new ConcurrentHashMap<>();
 
-    /** Diccionario rápido para buscar un documento por su nombre. */
+    /**
+     * Diccionario rápido para buscar un documento por su nombre.
+     * La clave incluye la empresa ("empresa|nombre") para que dos empresas
+     * puedan tener ficheros con el mismo nombre sin pisarse.
+     */
     private final Map<String, String> indicePorNombre = new ConcurrentHashMap<>();
+
+    /** Clave de metadatos que identifica a la empresa (tenant) propietaria. */
+    public static final String CLAVE_EMPRESA = "company_id";
 
     /** Palabras aproximadas en cada trozo de texto. */
     private static final int TAMANIO_FRAGMENTO = 300;
@@ -112,7 +119,7 @@ public class DocumentIngestionService {
                         });
                 for (DocumentoDTO doc : lista) {
                     registroDocumentos.put(doc.id(), doc);
-                    indicePorNombre.put(doc.nombre().toLowerCase(), doc.id());
+                    indicePorNombre.put(claveNombre(empresaDe(doc), doc.nombre()), doc.id());
                 }
                 Log.infof("Catálogo de la base de conocimiento cargado desde %s (%d ficheros)",
                         FICHERO_CATALOGO, lista.size());
@@ -140,6 +147,15 @@ public class DocumentIngestionService {
 
     public DocumentoDTO ingerirFichero(Path rutaFichero, String nombreOriginal, String metadatosJson,
             boolean enriquecer) {
+        return ingerirFichero(rutaFichero, nombreOriginal, metadatosJson, enriquecer, TenantContext.get());
+    }
+
+    /**
+     * Ingiere un fichero asociándolo explícitamente a una empresa.
+     * Los endpoints REST deben usar esta variante pasando el company_id del JWT.
+     */
+    public DocumentoDTO ingerirFichero(Path rutaFichero, String nombreOriginal, String metadatosJson,
+            boolean enriquecer, String idEmpresa) {
 
         if (rutaFichero == null || !rutaFichero.toFile().exists()) {
             throw new IllegalArgumentException(
@@ -167,11 +183,12 @@ public class DocumentIngestionService {
             metadatosMap.put("documento_id", idDocumento);
             metadatosMap.put("nombre_archivo", nombreOriginal);
 
-            // Multi-tenant: asociar el documento al tenant activo (si hay uno)
-            String tenantId = TenantContext.get();
-            if (tenantId != null) {
-                metadatosMap.put("company_id", tenantId);
+            // Multi-tenant: el documento pertenece a la empresa indicada.
+            // Se sobrescribe cualquier company_id que viniera en los metadatos del cliente.
+            if (idEmpresa == null || idEmpresa.isBlank()) {
+                throw new IllegalArgumentException("No se puede ingerir un documento sin empresa asociada.");
             }
+            metadatosMap.put(CLAVE_EMPRESA, idEmpresa);
 
             Document documento = FileSystemDocumentLoader.loadDocument(
                     rutaFichero,
@@ -276,7 +293,7 @@ public class DocumentIngestionService {
                     (long) documento.text().length());
 
             registroDocumentos.put(idDocumento, documentoDTO);
-            indicePorNombre.put(nombreOriginal.toLowerCase(), idDocumento);
+            indicePorNombre.put(claveNombre(idEmpresa, nombreOriginal), idDocumento);
             guardarCatalogo();
 
             // Fase 5: Documento listo
@@ -298,7 +315,20 @@ public class DocumentIngestionService {
      * @return Lista de documentos guardados.
      */
     public List<DocumentoDTO> listarDocumentos() {
-        return new ArrayList<>(registroDocumentos.values());
+        return listarDocumentos(TenantContext.get());
+    }
+
+    /**
+     * Documentos de una empresa concreta. Sin empresa no se devuelve nada
+     * (denegar por defecto).
+     */
+    public List<DocumentoDTO> listarDocumentos(String idEmpresa) {
+        if (idEmpresa == null) {
+            return new ArrayList<>();
+        }
+        return registroDocumentos.values().stream()
+                .filter(doc -> idEmpresa.equals(empresaDe(doc)))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -307,8 +337,9 @@ public class DocumentIngestionService {
      * @param id Identificador del documento.
      * @return El documento si existe, o vacío si no.
      */
-    public Optional<DocumentoDTO> obtenerDocumento(String id) {
-        return Optional.ofNullable(registroDocumentos.get(id));
+    public Optional<DocumentoDTO> obtenerDocumento(String id, String idEmpresa) {
+        return Optional.ofNullable(registroDocumentos.get(id))
+                .filter(doc -> idEmpresa != null && idEmpresa.equals(empresaDe(doc)));
     }
 
     /**
@@ -317,13 +348,16 @@ public class DocumentIngestionService {
      * @param identificador Nombre o ID del documento a borrar.
      * @return Verdadero si se borró, falso si no existía.
      */
-    public boolean eliminarDocumento(String identificador) {
+    public boolean eliminarDocumento(String identificador, String idEmpresa) {
+        if (identificador == null || idEmpresa == null) {
+            return false;
+        }
 
-        DocumentoDTO docAEliminar = registroDocumentos.get(identificador);
+        DocumentoDTO docAEliminar = obtenerDocumento(identificador, idEmpresa).orElse(null);
 
         if (docAEliminar == null) {
-            // Resolución secundaria por nombre de fichero mediante índice invertido
-            String idPorNombre = indicePorNombre.get(identificador.toLowerCase());
+            // Resolución secundaria por nombre de fichero, siempre dentro de la misma empresa
+            String idPorNombre = indicePorNombre.get(claveNombre(idEmpresa, identificador));
             if (idPorNombre != null) {
                 docAEliminar = registroDocumentos.get(idPorNombre);
             }
@@ -334,14 +368,18 @@ public class DocumentIngestionService {
             String nombreTraza = docAEliminar.nombre();
 
             registroDocumentos.remove(idTraza);
-            indicePorNombre.remove(nombreTraza.toLowerCase());
+            indicePorNombre.remove(claveNombre(idEmpresa, nombreTraza));
             Log.infof("Documento eliminado del catálogo: %s (ID: %s)", nombreTraza, idTraza);
 
             guardarCatalogo();
 
             // Purga de vectores en la base de datos vectorial mediante filtro de metadatos
             try {
-                Filter filtro = MetadataFilterBuilder.metadataKey("nombre_archivo").isEqualTo(nombreTraza);
+                // Se filtra por id de documento y empresa: borrar por nombre eliminaría
+                // también los vectores de otras empresas con un fichero homónimo.
+                Filter filtro = Filter.and(
+                        MetadataFilterBuilder.metadataKey("documento_id").isEqualTo(idTraza),
+                        MetadataFilterBuilder.metadataKey(CLAVE_EMPRESA).isEqualTo(idEmpresa));
                 storeVectores.removeAll(filtro);
                 Log.infof("Vectores eliminados de pgvector para el documento: %s", nombreTraza);
             } catch (Exception e) {
@@ -362,19 +400,20 @@ public class DocumentIngestionService {
      *
      * @return Diccionario con los datos del sistema.
      */
-    public Map<String, Object> obtenerEstadisticas() {
+    public Map<String, Object> obtenerEstadisticas(String idEmpresa) {
         Map<String, Object> estadisticas = new HashMap<>();
+        List<DocumentoDTO> documentos = listarDocumentos(idEmpresa);
 
-        int totalDocumentos = registroDocumentos.size();
+        int totalDocumentos = documentos.size();
 
-        long caracteresTotales = registroDocumentos.values().stream()
+        long caracteresTotales = documentos.stream()
                 .mapToLong(DocumentoDTO::tamanioBytes)
                 .sum();
 
         // regla práctica de estimación: 1 token ≈ 4 caracteres en español
         long fragmentosEstimados = caracteresTotales / (TAMANIO_FRAGMENTO * 4L);
 
-        Map<String, Long> distribucionTipos = registroDocumentos.values().stream()
+        Map<String, Long> distribucionTipos = documentos.stream()
                 .collect(Collectors.groupingBy(DocumentoDTO::tipo, Collectors.counting()));
 
         estadisticas.put("ficheros_procesados", totalDocumentos);
@@ -475,12 +514,23 @@ public class DocumentIngestionService {
         };
     }
 
+    /** Empresa propietaria de un documento (null si es un documento antiguo sin empresa). */
+    private static String empresaDe(DocumentoDTO doc) {
+        return doc.metadatos() == null ? null : doc.metadatos().get(CLAVE_EMPRESA);
+    }
+
+    /** Clave del índice por nombre, separada por empresa. */
+    private static String claveNombre(String idEmpresa, String nombre) {
+        return (idEmpresa == null ? "" : idEmpresa) + "|" + nombre.toLowerCase();
+    }
+
     /**
      * Guarda la lista de documentos en disco para no perderla si se reinicia.
      */
     private void guardarCatalogo() {
         try {
-            List<DocumentoDTO> lista = listarDocumentos();
+            // El catálogo en disco guarda los documentos de todas las empresas
+            List<DocumentoDTO> lista = new ArrayList<>(registroDocumentos.values());
             objectMapper.writeValue(new File(FICHERO_CATALOGO), lista);
             Log.infof("Catálogo sincronizado correctamente en %s", FICHERO_CATALOGO);
         } catch (Exception e) {

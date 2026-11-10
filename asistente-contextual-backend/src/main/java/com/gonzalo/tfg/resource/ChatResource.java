@@ -31,7 +31,8 @@ public class ChatResource {
     public List<ChatSessionSummaryDTO> obtenerSesiones() {
         String nombreUsuario = jwt.getName();
 
-        return ChatSessionEntity.<ChatSessionEntity>listAll(Sort.by("updatedAt").descending())
+        // Solo las sesiones del usuario autenticado
+        return ChatSessionEntity.<ChatSessionEntity>list("userId", Sort.by("updatedAt").descending(), nombreUsuario)
                 .stream()
                 .map(entity -> new ChatSessionSummaryDTO(entity.sessionId, entity.updatedAt, entity.titulo))
                 .collect(Collectors.toList());
@@ -62,7 +63,7 @@ public class ChatResource {
         }
 
         try {
-            boolean eliminado = chatService.eliminarSesion(id);
+            boolean eliminado = chatService.eliminarSesion(id, jwt.getName());
             if (!eliminado) {
                 // Sesión no existe en BD — para el frontend igual es éxito
                 // (ya no existe, objetivo cumplido)
@@ -84,7 +85,7 @@ public class ChatResource {
     @Path("/{id}/titulo")
     @Transactional
     public Response actualizarTitulo(@PathParam("id") String id, String nuevoTitulo) {
-        ChatSessionEntity entity = ChatSessionEntity.findById(id);
+        ChatSessionEntity entity = chatService.buscarDeUsuario(id, jwt.getName());
         if (entity == null) {
             throw new WebApplicationException("Sesión no encontrada: " + id, Response.Status.NOT_FOUND);
         }
@@ -95,7 +96,7 @@ public class ChatResource {
     @GET
     @Path("/{id}/historial")
     public String obtenerHistorial(@PathParam("id") String id) {
-        ChatSessionEntity entity = ChatSessionEntity.findById(id);
+        ChatSessionEntity entity = chatService.buscarDeUsuario(id, jwt.getName());
         if (entity == null) {
             throw new WebApplicationException("Sesión no encontrada: " + id, Response.Status.NOT_FOUND);
         }

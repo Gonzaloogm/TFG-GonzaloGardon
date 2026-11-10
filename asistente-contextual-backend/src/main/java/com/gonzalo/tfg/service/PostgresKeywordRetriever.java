@@ -28,18 +28,25 @@ public class PostgresKeywordRetriever {
     @Inject
     ObjectMapper objectMapper;
 
-    public ContentRetriever crearRetriever(String archivoFiltro, String customSearchTerm) {
+    /**
+     * Crea un buscador por palabras clave limitado a una empresa.
+     *
+     * @param archivoFiltro    nombre de fichero concreto, o null para buscar en todos
+     * @param customSearchTerm términos de búsqueda ya limpios, o null para usar la consulta
+     * @param idEmpresa        empresa propietaria; sin empresa no se devuelve nada
+     */
+    public ContentRetriever crearRetriever(String archivoFiltro, String customSearchTerm, String idEmpresa) {
         return query -> {
+            if (idEmpresa == null || idEmpresa.isBlank()) {
+                return new ArrayList<>();
+            }
             try {
                 String searchTerm = (customSearchTerm != null) ? customSearchTerm : query.text();
                 List<Content> contents = new ArrayList<>();
 
                 String sql = "SELECT text, metadata FROM embeddings " +
-                             "WHERE websearch_to_tsquery('spanish', ?) @@ to_tsvector('spanish', text) ";
-                
-                if (archivoFiltro != null) {
-                    sql += "AND metadata @> ?::jsonb ";
-                }
+                             "WHERE websearch_to_tsquery('spanish', ?) @@ to_tsvector('spanish', text) " +
+                             "AND metadata @> ?::jsonb ";
                 
                 sql += "ORDER BY ts_rank(to_tsvector('spanish', text), websearch_to_tsquery('spanish', ?)) DESC " +
                        "LIMIT 15";
@@ -50,11 +57,13 @@ public class PostgresKeywordRetriever {
                     int paramIndex = 1;
                     stmt.setString(paramIndex++, searchTerm);
                     
+                    // Filtro JSONB: siempre por empresa y, si procede, por fichero
+                    Map<String, String> f = new HashMap<>();
+                    f.put("company_id", idEmpresa);
                     if (archivoFiltro != null) {
-                        Map<String, String> f = new HashMap<>();
                         f.put("nombre_archivo", archivoFiltro);
-                        stmt.setString(paramIndex++, objectMapper.writeValueAsString(f));
                     }
+                    stmt.setString(paramIndex++, objectMapper.writeValueAsString(f));
                     
                     stmt.setString(paramIndex++, searchTerm);
 
