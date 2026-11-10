@@ -1,9 +1,10 @@
 package com.gonzalo.tfg.tools;
 
 import com.gonzalo.tfg.model.DocumentoDTO;
-import com.gonzalo.tfg.security.TenantContext;
 import com.gonzalo.tfg.service.DocumentIngestionService;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolMemoryId;
+import com.gonzalo.tfg.security.ContextoSesion;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -36,7 +37,8 @@ public class ReportGeneratorTool {
     private static final DateTimeFormatter FORMATO_FECHA = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
 
     @Tool("Genera un informe de investigación en formato Markdown y lo guarda en disco. Úsala cuando el usuario pida exportar, guardar o generar un documento con el resultado del análisis. Parámetros: título del informe, contenido en Markdown (con el análisis completo), y opcionalmente el sessionId de la conversación actual.")
-    public String generarInformeMarkdown(String titulo, String contenidoMarkdown, String sessionId) {
+    public String generarInformeMarkdown(String titulo, String contenidoMarkdown, String sessionId,
+            @ToolMemoryId Object memoryId) {
         Log.infof("Generando informe: '%s'", titulo);
 
         if (titulo == null || titulo.isBlank()) {
@@ -47,7 +49,7 @@ public class ReportGeneratorTool {
         }
 
         try {
-            Path dirInformes = directorioInformesEmpresa();
+            Path dirInformes = directorioInformesEmpresa(ContextoSesion.empresaDe(memoryId));
             if (!Files.exists(dirInformes)) {
                 Files.createDirectories(dirInformes);
             }
@@ -85,10 +87,10 @@ public class ReportGeneratorTool {
     }
 
     @Tool("Genera un informe de inventario completo de la base de conocimiento: lista todos los documentos, sus metadatos, tecnologías detectadas y estadísticas de cobertura. Úsala cuando el usuario quiera un resumen del estado de la base de conocimiento.")
-    public String generarInventarioBaseConocimiento() {
+    public String generarInventarioBaseConocimiento(@ToolMemoryId Object memoryId) {
         Log.info("Generando inventario de la base de conocimiento.");
 
-        List<DocumentoDTO> documentos = servicioIngestion.listarDocumentos();
+        List<DocumentoDTO> documentos = servicioIngestion.listarDocumentos(ContextoSesion.empresaDe(memoryId));
 
         if (documentos.isEmpty()) {
             return "La base de conocimiento está vacía. No hay documentos para inventariar.";
@@ -136,7 +138,7 @@ public class ReportGeneratorTool {
         String contenido = md.toString();
 
         try {
-            Path dirInformes = directorioInformesEmpresa();
+            Path dirInformes = directorioInformesEmpresa(ContextoSesion.empresaDe(memoryId));
             if (!Files.exists(dirInformes))
                 Files.createDirectories(dirInformes);
 
@@ -150,10 +152,10 @@ public class ReportGeneratorTool {
     }
 
     @Tool("Lista todos los informes generados previamente que están disponibles en el servidor. Úsala cuando el usuario pregunte por informes anteriores o quiera recuperar un análisis previo.")
-    public String listarInformesGenerados() {
+    public String listarInformesGenerados(@ToolMemoryId Object memoryId) {
         Log.info("El motor de IA solicita el listado de informes generados.");
 
-        Path dirInformes = directorioInformesEmpresa();
+        Path dirInformes = directorioInformesEmpresa(ContextoSesion.empresaDe(memoryId));
 
         if (!Files.exists(dirInformes)) {
             return "Aún no se ha generado ningún informe. El directorio '" + DIRECTORIO_INFORMES + "' no existe.";
@@ -224,8 +226,7 @@ public class ReportGeneratorTool {
      * Cada empresa tiene su propia carpeta de informes (informes/<empresa>),
      * para que los informes de una no aparezcan al listar los de otra.
      */
-    private static Path directorioInformesEmpresa() {
-        String idEmpresa = TenantContext.get();
+    private static Path directorioInformesEmpresa(String idEmpresa) {
         if (idEmpresa == null || !idEmpresa.matches("[A-Za-z0-9_-]+")) {
             throw new IllegalStateException("Empresa no válida para generar o listar informes.");
         }

@@ -21,7 +21,6 @@ import io.quarkus.logging.Log;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.event.Event;
 import com.gonzalo.tfg.model.IngestionStatusEvent;
-import com.gonzalo.tfg.security.TenantContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -139,20 +138,9 @@ public class DocumentIngestionService {
      * @param rutaFichero Dónde está el archivo en el disco.
      * @param nombreOriginal Nombre original del archivo subido.
      * @param metadatosJson Información adicional en formato JSON.
+     * @param enriquecer Si se extraen entidades de cada fragmento con el LLM.
+     * @param idEmpresa Empresa propietaria (company_id del JWT); obligatoria.
      * @return Datos del documento guardado.
-     */
-    public DocumentoDTO ingerirFichero(Path rutaFichero, String nombreOriginal, String metadatosJson) {
-        return ingerirFichero(rutaFichero, nombreOriginal, metadatosJson, true);
-    }
-
-    public DocumentoDTO ingerirFichero(Path rutaFichero, String nombreOriginal, String metadatosJson,
-            boolean enriquecer) {
-        return ingerirFichero(rutaFichero, nombreOriginal, metadatosJson, enriquecer, TenantContext.get());
-    }
-
-    /**
-     * Ingiere un fichero asociándolo explícitamente a una empresa.
-     * Los endpoints REST deben usar esta variante pasando el company_id del JWT.
      */
     public DocumentoDTO ingerirFichero(Path rutaFichero, String nombreOriginal, String metadatosJson,
             boolean enriquecer, String idEmpresa) {
@@ -314,10 +302,6 @@ public class DocumentIngestionService {
      *
      * @return Lista de documentos guardados.
      */
-    public List<DocumentoDTO> listarDocumentos() {
-        return listarDocumentos(TenantContext.get());
-    }
-
     /**
      * Documentos de una empresa concreta. Sin empresa no se devuelve nada
      * (denegar por defecto).

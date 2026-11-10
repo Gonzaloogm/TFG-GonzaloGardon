@@ -24,17 +24,24 @@ public class CustomQueryTransformer implements QueryTransformer {
     @Inject
     ObjectMapper objectMapper;
 
-    // Caché en memoria para evitar re-generar HyDE en preguntas repetidas
-    private final ConcurrentHashMap<String, Collection<Query>> cache = new ConcurrentHashMap<>();
+    /**
+     * Caché de textos generados (HyDE + variaciones) por pregunta.
+     * Se guardan solo los textos, no los objetos Query: cada Query lleva los
+     * metadatos de su conversación (empresa incluida) y no debe reutilizarse
+     * entre usuarios. Tamaño limitado para no crecer sin control.
+     */
+    private static final int MAX_ENTRADAS_CACHE = 500;
+    private final ConcurrentHashMap<String, List<String>> cache = new ConcurrentHashMap<>();
 
     @Override
     public Collection<Query> transform(Query query) {
         String originalText = query.text();
 
         // 1. Verificación en caché (Opcional pero recomendado)
-        if (cache.containsKey(originalText)) {
+        List<String> enCache = cache.get(originalText);
+        if (enCache != null) {
             Log.debug("CustomQueryTransformer: Usando caché para la consulta.");
-            return cache.get(originalText);
+            return construirQueries(query, enCache);
         }
 
         Log.debug("CustomQueryTransformer: Generando HyDE y Multi-Query para: " + originalText);
@@ -83,8 +90,7 @@ public class CustomQueryTransformer implements QueryTransformer {
         }
 
         // 3. Parseo y empaquetado de resultados
-        List<Query> resultQueries = new ArrayList<>();
-        resultQueries.add(query); // Siempre incluir la original
+        List<String> textosGenerados = new ArrayList<>();
 
         try {
             if (jsonResponse != null && !jsonResponse.isBlank()) {
@@ -95,7 +101,7 @@ public class CustomQueryTransformer implements QueryTransformer {
                 if (root.has("respuesta_hipotetica")) {
                     String hyde = root.get("respuesta_hipotetica").asText();
                     if (!hyde.isBlank()) {
-                        resultQueries.add(Query.from(hyde));
+                        textosGenerados.add(hyde);
                     }
                 }
 
@@ -103,18 +109,34 @@ public class CustomQueryTransformer implements QueryTransformer {
                     for (JsonNode varNode : root.get("variaciones")) {
                         String var = varNode.asText();
                         if (!var.isBlank()) {
-                            resultQueries.add(Query.from(var));
+                            textosGenerados.add(var);
                         }
                     }
                 }
-                Log.debug("CustomQueryTransformer: Generadas " + (resultQueries.size() - 1) + " queries aumentadas.");
+                Log.debug("CustomQueryTransformer: Generadas " + textosGenerados.size() + " queries aumentadas.");
             }
         } catch (Exception e) {
             Log.error("CustomQueryTransformer: Error parseando JSON: " + jsonResponse, e);
         }
 
         // Guardar en caché antes de devolver
-        cache.put(originalText, resultQueries);
-        return resultQueries;
+        if (cache.size() >= MAX_ENTRADAS_CACHE) {
+            cache.clear();
+        }
+        cache.put(originalText, List.copyOf(textosGenerados));
+        return construirQueries(query, textosGenerados);
+    }
+
+    /**
+     * Construye las queries finales: la original más las generadas, todas con
+     * los metadatos de la conversación actual (memoryId, historial...).
+     */
+    private static Collection<Query> construirQueries(Query original, List<String> textos) {
+        List<Query> queries = new ArrayList<>();
+        queries.add(original);
+        for (String texto : textos) {
+            queries.add(original.metadata() != null ? Query.from(texto, original.metadata()) : Query.from(texto));
+        }
+        return queries;
     }
 }

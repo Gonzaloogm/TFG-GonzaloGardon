@@ -3,6 +3,8 @@ package com.gonzalo.tfg.tools;
 import com.gonzalo.tfg.model.DocumentoDTO;
 import com.gonzalo.tfg.service.DocumentIngestionService;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolMemoryId;
+import com.gonzalo.tfg.security.ContextoSesion;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -23,10 +25,10 @@ public class KnowledgeBaseStatsTool {
     @Tool("Devuelve métricas operativas de la base de conocimiento (conteo, tipos, tecnologías, tamaño). " +
             "Úsala SOLAMENTE cuando el usuario pregunte explícitamente por estadísticas, cantidad de archivos " +
             "o un resumen general del catálogo. NO la uses para responder preguntas sobre el contenido por significado de los textos.")
-    public String obtenerEstadisticasBaseConocimiento() {
+    public String obtenerEstadisticasBaseConocimiento(@ToolMemoryId Object memoryId) {
         Log.info("El motor de IA solicita estadísticas de la base de conocimiento.");
 
-        List<DocumentoDTO> documentos = servicioIngestion.listarDocumentos();
+        List<DocumentoDTO> documentos = servicioIngestion.listarDocumentos(ContextoSesion.empresaDe(memoryId));
 
         if (documentos.isEmpty()) {
             return "La base de conocimiento está vacía. No hay documentos indexados.";

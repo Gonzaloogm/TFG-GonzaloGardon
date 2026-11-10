@@ -20,7 +20,7 @@ import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 
-import com.gonzalo.tfg.security.TenantContext;
+import com.gonzalo.tfg.security.ContextoSesion;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
 
@@ -104,7 +104,10 @@ public class RagConfig {
             String input = normalizarTexto(inputOriginal);
 
             // Obtiene la empresa actual para aislar sus documentos
-            String idEmpresa = TenantContext.get();
+            // La empresa viaja en el memoryId de la conversación (no en un ThreadLocal),
+            // porque con streaming esta fase puede ejecutarse en otro hilo.
+            String idEmpresa = query.metadata() == null ? null
+                    : ContextoSesion.empresaDe(query.metadata().chatMemoryId());
             // Sin empresa no se recupera nada: nunca se busca en los documentos de todas
             if (idEmpresa == null) {
                 Log.warn("Enrutador: consulta sin empresa en contexto. Sin recuperación.");
@@ -142,7 +145,7 @@ public class RagConfig {
             Log.infof("Query optimizada para Keywords: '%s'", queryParaKeywords);
 
             // Si menciona un documento concreto, busca directamente en él
-            List<DocumentoDTO> todosLosDocs = ingestionService.listarDocumentos();
+            List<DocumentoDTO> todosLosDocs = ingestionService.listarDocumentos(idEmpresa);
             List<ContentRetriever> recuperadoresSeleccionados = new ArrayList<>();
 
             for (DocumentoDTO doc : todosLosDocs) {
@@ -247,7 +250,10 @@ public class RagConfig {
                         .map(Content::textSegment)
                         .collect(Collectors.toList());
 
-                String qText = queryToContents.keySet().iterator().next().text();
+                dev.langchain4j.rag.query.Query primeraQuery = queryToContents.keySet().iterator().next();
+                String qText = primeraQuery.text();
+                String idEmpresaAgregador = primeraQuery.metadata() == null ? null
+                        : ContextoSesion.empresaDe(primeraQuery.metadata().chatMemoryId());
                 // Limpia la consulta original para filtrado
                 String qNormalizada = normalizarTexto(qText);
 
@@ -259,7 +265,7 @@ public class RagConfig {
                 }
 
                 // Si la pregunta menciona algún archivo, descarta los fragmentos que sean de otros
-                List<String> archivosReferenciados = ingestionService.listarDocumentos().stream()
+                List<String> archivosReferenciados = ingestionService.listarDocumentos(idEmpresaAgregador).stream()
                         .map(doc -> normalizarTexto(doc.nombre()))
                         .map(nombre -> nombre.contains(".")
                                 ? nombre.substring(0, nombre.lastIndexOf('.'))

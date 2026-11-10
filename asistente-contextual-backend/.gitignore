@@ -49,3 +49,6 @@ nb-configuration.xml
 
 # Sandbox de herramientas del asistente (datos locales)
 /sandbox/
+
+# Claves JWT locales (generar con scripts/generar-claves-jwt.sh)
+/keys/

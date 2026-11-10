@@ -937,7 +937,8 @@
                 intervalos: [],      // B3: guarda refs para limpiarlas si fuera necesario
                 MAX_CHARS: 4000,
                 cargandoChats: false,
-                authCompleted: false  // JWT: bloquea mensajes de chat hasta auth_success
+                authCompleted: false, // JWT: bloquea mensajes de chat hasta auth_success
+                respuestaActual: null // Streaming: { bubble, texto } de la respuesta en curso
             };
 
             // =====================================================================
@@ -1121,6 +1122,33 @@
                 row.appendChild(bubble);
                 DOM.chat.appendChild(row);
                 scrollToBottom();
+                return bubble;
+            }
+
+            // =====================================================================
+            // STREAMING: la respuesta llega en fragmentos ("token") y termina con "end"
+            // =====================================================================
+            function anadirFragmento(texto) {
+                if (!App.respuestaActual) {
+                    hideTyping();
+                    const bubble = log('Asistente', '', 'assistant');
+                    App.respuestaActual = { bubble, texto: '' };
+                }
+                App.respuestaActual.texto += texto;
+                // Se re-renderiza el Markdown acumulado; DOMPurify sigue aplicándose en cada paso
+                App.respuestaActual.bubble.innerHTML =
+                    DOMPurify.sanitize(marked.parse(App.respuestaActual.texto));
+                scrollToBottom();
+            }
+
+            function terminarRespuesta() {
+                hideTyping();
+                if (!App.respuestaActual) {
+                    log('Asistente', '(Sin respuesta)', 'assistant');
+                }
+                App.respuestaActual = null;
+                setEnviando(false);
+                cargarListaChats();
             }
 
             function showTyping() {
@@ -1172,6 +1200,24 @@
                             return;
                         }
 
+                        // La conversación es de otro usuario o no existe: se abre una nueva
+                        // sin cerrar la sesión del usuario (no es un fallo de login)
+                        if (frame.type === 'session_unavailable') {
+                            crearNuevoChat();
+                            log('Sistema', 'Esa conversación no está disponible. Se ha abierto una nueva.', 'error');
+                            return;
+                        }
+
+                        // Fase 3: respuesta del asistente en streaming
+                        if (frame.type === 'token') {
+                            if (App.authCompleted) anadirFragmento(frame.content || '');
+                            return;
+                        }
+                        if (frame.type === 'end') {
+                            if (App.authCompleted) terminarRespuesta();
+                            return;
+                        }
+
                         // Fase 2: Autenticación fallida
                         if (frame.type === 'auth_failed') {
                             sessionStorage.removeItem('jwt_token');
@@ -1187,6 +1233,7 @@
                         if (frame.type === 'error') {
                             hideTyping();
                             setEnviando(false);
+                            App.respuestaActual = null; // se conserva lo ya recibido
                             log('Sistema', frame.reason || 'Error del servidor.', 'error');
                             return;
                         }
