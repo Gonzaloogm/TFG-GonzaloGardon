@@ -7,6 +7,9 @@ public final class TenantContext {
 
     private static final ThreadLocal<String> CURRENT_TENANT = new ThreadLocal<>();
 
+    /** Usuario autenticado de la petición actual (claim sub del JWT). */
+    private static final ThreadLocal<String> CURRENT_USER = new ThreadLocal<>();
+
     /**
      * Guarda el ID de la empresa para la petición actual.
      *
@@ -26,10 +29,29 @@ public final class TenantContext {
     }
 
     /**
+     * Guarda el usuario autenticado para la petición actual.
+     *
+     * @param nombreUsuario Nombre de usuario (claim sub del JWT).
+     */
+    public static void setUsuario(String nombreUsuario) {
+        CURRENT_USER.set(nombreUsuario);
+    }
+
+    /**
+     * Devuelve el usuario autenticado de la petición actual.
+     *
+     * @return El nombre de usuario, o null si no hay ninguno.
+     */
+    public static String getUsuario() {
+        return CURRENT_USER.get();
+    }
+
+    /**
      * Borra la empresa guardada para evitar que se mezcle con otras peticiones.
      */
     public static void clear() {
         CURRENT_TENANT.remove();
+        CURRENT_USER.remove();
     }
 
     private TenantContext() {

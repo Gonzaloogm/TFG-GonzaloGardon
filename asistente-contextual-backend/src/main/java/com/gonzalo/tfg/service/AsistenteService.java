@@ -301,7 +301,10 @@ public interface AsistenteService {
          apropiada para esa pregunta concreta.
 
          ## Herramientas MCP de sistema operativo
-         Cuándo: el usuario pide información del entorno local (archivos en disco, memoria, OS, rutas).
+         Cuándo: el usuario pide información del entorno local (archivos del sandbox, memoria, OS).
+         Alcance: solo puedes leer y listar dentro del directorio sandbox de la aplicación, con rutas
+         relativas a él. No puedes ejecutar comandos de consola. Si te piden algo fuera de ese alcance,
+         explícalo en lugar de intentarlo.
          Regla: nunca inventes archivos ni rutas. Búscalos con las herramientas reales.
          Usa estas herramientas de forma sistemática, no especulativa.
 

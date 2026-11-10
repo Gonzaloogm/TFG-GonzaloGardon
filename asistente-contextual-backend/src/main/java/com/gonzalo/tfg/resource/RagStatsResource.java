@@ -9,6 +9,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import org.eclipse.microprofile.jwt.JsonWebToken;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,6 +32,9 @@ public class RagStatsResource {
     @Inject
     DocumentIngestionService servicioIngestion;
 
+    @Inject
+    JsonWebToken jwt;
+
     /*
      Recupera estadísticas agregadas de la base de conocimiento.
      GET /api/rag/stats
@@ -42,20 +46,20 @@ public class RagStatsResource {
     @Path("/stats")
     public Response obtenerEstadisticas() {
         try {
-            Map<String, Object> metricas = servicioIngestion.obtenerEstadisticas();
+            Map<String, Object> metricas = servicioIngestion.obtenerEstadisticas(jwt.getClaim("company_id"));
 
             // Enriquecimiento con parámetros de configuración del motor RAG
             Map<String, Object> configuracion = new HashMap<>();
             configuracion.put("maxResults", 5);
             configuracion.put("minScore", 0.7);
-            configuracion.put("modelo_embeddings", "text-embedding-004");
-            configuracion.put("dimensiones_vectoriales", 768);
+            configuracion.put("modelo_embeddings", "bge-small-en-q (ONNX local)");
+            configuracion.put("dimensiones_vectoriales", 384);
 
             metricas.put("configuracion_motor", configuracion);
 
             Log.infof("Informe de métricas RAG: %d ficheros procesados, %s fragmentos generados",
-                    metricas.get("documentos_procesados"),
-                    metricas.get("total_fragmentos"));
+                    metricas.get("ficheros_procesados"),
+                    metricas.get("total_fragmentos_estimados"));
 
             return Response.ok(metricas).build();
 
@@ -85,7 +89,7 @@ public class RagStatsResource {
             estado.put("marca_tiempo", System.currentTimeMillis());
 
             // Validación de la base de conocimiento cargada
-            int numFicheros = servicioIngestion.listarDocumentos().size();
+            int numFicheros = servicioIngestion.listarDocumentos(jwt.getClaim("company_id")).size();
             estado.put("ficheros_cargados", numFicheros);
             estado.put("listo_para_consultas", numFicheros > 0);
 

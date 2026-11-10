@@ -2,242 +2,183 @@ package com.gonzalo.tfg.tools;
 
 import dev.langchain4j.agent.tool.Tool;
 import io.quarkus.logging.Log;
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Herramientas de consulta del entorno para el LLM.
+ *
+ * Seguridad:
+ * - No existe ejecución de comandos de shell. Una lista negra de comandos no
+ *   es una defensa suficiente (se esquiva con python -c, perl, find -delete...),
+ *   y un documento con instrucciones ocultas podría provocar la llamada.
+ * - Lectura y listado confinados a un único directorio sandbox configurable
+ *   (app.tools.sandbox-dir). Las rutas se resuelven con toRealPath(), de modo
+ *   que ni "../" ni los enlaces simbólicos permiten salir del sandbox.
+ * - Solo lectura: ninguna herramienta escribe ni borra.
+ */
 @ApplicationScoped
 public class SystemActionsTool {
 
-    // SEC1: Patrones cuya presencia en el comando provoca rechazo inmediato.
-    private static final List<String> PATRONES_BLOQUEADOS = List.of(
-            "rm ", "rmdir", "mkfs", "dd ", "shred", "wipefs",
-            "> /dev", "curl", "wget", "nc ", "netcat",
-            "chmod 777", "sudo", "su ", "|bash", "| bash",
-            "eval ", "exec ", "/dev/sd", "/dev/nvme");
-
-    // SEC2: Únicas raíces del sistema de ficheros a las que el LLM puede acceder.
-    private static final Set<String> DIRECTORIOS_PERMITIDOS = Set.of(
-            System.getProperty("user.dir"),
-            System.getProperty("java.io.tmpdir"));
-
     private static final int MAX_ENTRADAS_DIRECTORIO = 100;
     private static final long MAX_BYTES_FICHERO = 1024 * 1024L; // 1 MB
-    private static final int TIMEOUT_SEGUNDOS = 10;
 
-    @Tool("Ejecuta una instrucción en la consola del sistema operativo anfitrión y devuelve la salida resultante. Para uso diagnóstico del entorno.")
-    public String ejecutarComandoConsola(String comando) {
+    @ConfigProperty(name = "app.tools.sandbox-dir", defaultValue = "sandbox")
+    String directorioSandbox;
 
-        // SEC1: Rechazo preventivo de comandos destructivos o de red
-        String comandoLower = comando.toLowerCase();
-        for (String patron : PATRONES_BLOQUEADOS) {
-            if (comandoLower.contains(patron)) {
-                Log.warnf("Comando bloqueado por política de seguridad: '%s'", comando);
-                return "Ejecución denegada: el comando contiene una operación no permitida («" + patron + "»).";
-            }
-        }
+    /** Raíz real (canónica) del sandbox, calculada al arrancar. */
+    private Path raizSandbox;
 
-        Log.warnf("El motor de IA solicita ejecución de: %s", comando);
-
+    @PostConstruct
+    void inicializar() {
         try {
-            ProcessBuilder pb = new ProcessBuilder();
-
-            // F1: Selección del intérprete según el sistema operativo
-            if (System.getProperty("os.name").toLowerCase().contains("win")) {
-                pb.command("cmd", "/c", comando);
-            } else {
-                pb.command("sh", "-c", comando);
-            }
-
-            // SEC4: Un único stream para stdout + stderr elimina el riesgo de deadlock
-            pb.redirectErrorStream(true);
-
-            Process proceso = pb.start();
-
-            boolean finalizado = proceso.waitFor(TIMEOUT_SEGUNDOS, TimeUnit.SECONDS);
-
-            if (!finalizado) {
-                // SEC3: destroyForcibly() garantiza que el PID desaparezca del SO
-                proceso.destroyForcibly();
-                proceso.waitFor(2, TimeUnit.SECONDS);
-                return "Error: la instrucción superó el límite de " + TIMEOUT_SEGUNDOS + " segundos y fue abortada.";
-            }
-
-            String salida = capturarFlujo(proceso.getInputStream());
-
-            if (proceso.exitValue() != 0) {
-                return "Instrucción finalizada con código de error " + proceso.exitValue() + ".\n" + salida;
-            }
-
-            return salida.isEmpty() ? "Instrucción completada sin salida." : salida;
-
-        } catch (Exception e) {
-            Log.errorf("Fallo al ejecutar comando: %s", e.getMessage());
-            return "Error interno al procesar la instrucción: " + e.getMessage();
+            Path ruta = Paths.get(directorioSandbox).toAbsolutePath().normalize();
+            Files.createDirectories(ruta);
+            raizSandbox = ruta.toRealPath();
+            Log.infof("Sandbox de herramientas de sistema: %s", raizSandbox);
+        } catch (IOException e) {
+            throw new IllegalStateException("No se pudo preparar el sandbox de herramientas: " + directorioSandbox, e);
         }
     }
 
-    @Tool("Devuelve el contenido de un fichero de texto mediante su ruta absoluta. Para inspección de logs, configuración o código fuente.")
-    public String leerFichero(String rutaAbsoluta) {
+    @Tool("Devuelve el contenido de un fichero de texto del directorio sandbox de la aplicación. "
+            + "Acepta una ruta relativa al sandbox (ej. 'logs/app.log').")
+    public String leerFichero(String ruta) {
+        Path real;
+        try {
+            real = resolverEnSandbox(ruta);
+        } catch (SecurityException e) {
+            return e.getMessage();
+        }
 
-        // SEC2: Canonicalización + validación de ruta base
-        String rechazo = validarRuta(rutaAbsoluta);
-        if (rechazo != null)
-            return rechazo;
-
-        Log.infof("El motor de IA solicita lectura de: %s", rutaAbsoluta);
+        Log.infof("El motor de IA solicita lectura de: %s", real);
 
         try {
-            Path ruta = Paths.get(rutaAbsoluta).toRealPath();
-
-            if (!Files.isRegularFile(ruta))
+            if (!Files.isRegularFile(real))
                 return "Error: la ruta no corresponde a un fichero regular.";
-            if (!Files.isReadable(ruta))
-                return "Error: sin permisos de lectura sobre el recurso.";
 
-            long tamanio = Files.size(ruta);
+            long tamanio = Files.size(real);
             if (tamanio > MAX_BYTES_FICHERO)
                 return "Error: el fichero excede el límite de lectura (" + (tamanio / 1024) + " KB).";
 
-            // ROB4: Charset explícito para evitar problemas con locales no-UTF-8
-            return Files.readString(ruta, StandardCharsets.UTF_8);
+            return Files.readString(real, StandardCharsets.UTF_8);
 
         } catch (Exception e) {
-            Log.errorf("Error de lectura en %s: %s", rutaAbsoluta, e.getMessage());
-            return "Fallo al acceder al fichero: " + e.getMessage();
+            Log.errorf("Error de lectura en %s: %s", real, e.getMessage());
+            return "Fallo al acceder al fichero.";
         }
     }
 
-    @Tool("Lista el contenido de un directorio mediante su ruta absoluta. Indica nombres, tamaños y tipo (fichero/directorio).")
-    public String listarContenidoDirectorio(String rutaAbsoluta) {
+    @Tool("Lista el contenido de un directorio dentro del sandbox de la aplicación. "
+            + "Acepta una ruta relativa al sandbox; vacía o '.' lista la raíz del sandbox.")
+    public String listarContenidoDirectorio(String ruta) {
+        Path real;
+        try {
+            real = resolverEnSandbox(ruta == null || ruta.isBlank() ? "." : ruta);
+        } catch (SecurityException e) {
+            return e.getMessage();
+        }
 
-        // SEC2: Validación de ruta base antes de listar
-        String rechazo = validarRuta(rutaAbsoluta);
-        if (rechazo != null)
-            return rechazo;
-
-        Log.infof("El motor de IA solicita exploración de: %s", rutaAbsoluta);
+        Log.infof("El motor de IA solicita exploración de: %s", real);
 
         try {
-            Path ruta = Paths.get(rutaAbsoluta).toRealPath();
-
-            if (!Files.isDirectory(ruta))
+            if (!Files.isDirectory(real))
                 return "Error: la ruta no es un directorio válido.";
 
-            // ROB2: try-with-resources cierra el DirectoryStream subyacente
-            List<String> entradas;
-            try (Stream<Path> stream = Files.list(ruta)) {
-                entradas = stream
-                        .limit(MAX_ENTRADAS_DIRECTORIO)
-                        .map(p -> {
-                            try {
-                                boolean esDir = Files.isDirectory(p);
-                                long tamanio = esDir ? 0L : Files.size(p);
-                                return String.format("%s - %s (%.2f KB)",
-                                        esDir ? "[DIR]" : "[FICHERO]",
-                                        p.getFileName(),
-                                        tamanio / 1024.0);
-                            } catch (IOException e) {
-                                return p.getFileName() + " - [Error al leer atributos]";
-                            }
-                        })
-                        .collect(Collectors.toList());
+            List<Path> todas;
+            try (Stream<Path> stream = Files.list(real)) {
+                todas = stream.collect(Collectors.toList());
             }
 
-            // F2: Aviso de truncado si el directorio tiene más entradas que el límite
-            long total = Files.list(ruta).count();
-            String aviso = total > MAX_ENTRADAS_DIRECTORIO
-                    ? "\n[Listado truncado: se muestran " + MAX_ENTRADAS_DIRECTORIO + " de " + total + " entradas]"
+            List<String> entradas = todas.stream()
+                    .limit(MAX_ENTRADAS_DIRECTORIO)
+                    .map(SystemActionsTool::describirEntrada)
+                    .collect(Collectors.toList());
+
+            String aviso = todas.size() > MAX_ENTRADAS_DIRECTORIO
+                    ? "\n[Listado truncado: se muestran " + MAX_ENTRADAS_DIRECTORIO + " de " + todas.size() + " entradas]"
                     : "";
 
-            return String.join("\n", entradas) + aviso;
+            return entradas.isEmpty() ? "El directorio está vacío." : String.join("\n", entradas) + aviso;
 
         } catch (Exception e) {
-            Log.errorf("Fallo de exploración en %s: %s", rutaAbsoluta, e.getMessage());
-            return "Error al inspeccionar el directorio: " + e.getMessage();
+            Log.errorf("Fallo de exploración en %s: %s", real, e.getMessage());
+            return "Error al inspeccionar el directorio.";
         }
     }
 
     @Tool("Genera un reporte del sistema operativo anfitrión, arquitectura del procesador y estado de la JVM.")
     public String obtenerEstadoSistema() {
         Log.info("El motor de IA solicita métricas del sistema.");
-        try {
-            Runtime rt = Runtime.getRuntime();
-            long memoriaMaxima = rt.maxMemory() / (1024 * 1024);
-            long memoriaTotal = rt.totalMemory() / (1024 * 1024);
-            long memoriaLibre = rt.freeMemory() / (1024 * 1024);
+        Runtime rt = Runtime.getRuntime();
+        long memoriaMaxima = rt.maxMemory() / (1024 * 1024);
+        long memoriaTotal = rt.totalMemory() / (1024 * 1024);
+        long memoriaLibre = rt.freeMemory() / (1024 * 1024);
 
-            return String.format(
-                    "Estado del sistema anfitrión:\n" +
-                            "- Usuario: %s\n" +
-                            "- Directorio de trabajo: %s\n" +
-                            "- OS: %s (versión %s, arquitectura %s)\n" +
-                            "- CPUs lógicas: %d\n" + // F3: nuevo campo útil para diagnóstico
-                            "- Memoria JVM — máxima: %d MB | reservada: %d MB | usada: %d MB | libre: %d MB",
-                    System.getProperty("user.name"),
-                    System.getProperty("user.dir"),
-                    System.getProperty("os.name"),
-                    System.getProperty("os.version"),
-                    System.getProperty("os.arch"),
-                    rt.availableProcessors(), // F3
-                    memoriaMaxima,
-                    memoriaTotal,
-                    memoriaTotal - memoriaLibre,
-                    memoriaLibre);
-        } catch (Exception e) {
-            return "Error al capturar métricas del sistema: " + e.getMessage();
-        }
+        // No se exponen usuario del SO ni rutas del servidor.
+        return String.format(
+                "Estado del sistema anfitrión:\n" +
+                        "- OS: %s (versión %s, arquitectura %s)\n" +
+                        "- CPUs lógicas: %d\n" +
+                        "- Memoria JVM — máxima: %d MB | reservada: %d MB | usada: %d MB | libre: %d MB",
+                System.getProperty("os.name"),
+                System.getProperty("os.version"),
+                System.getProperty("os.arch"),
+                rt.availableProcessors(),
+                memoriaMaxima,
+                memoriaTotal,
+                memoriaTotal - memoriaLibre,
+                memoriaLibre);
     }
 
     // -------------------------------------------------------------------------
 
     /**
-     * SEC2: Canonicaliza la ruta y verifica que esté dentro de
-     * DIRECTORIOS_PERMITIDOS.
-     * 
-     * @return null si la ruta es válida; mensaje de error si debe rechazarse.
+     * Resuelve una ruta (relativa al sandbox o absoluta) a su ruta real y
+     * comprueba que queda dentro del sandbox.
+     *
+     * @throws SecurityException con un mensaje apto para devolver al LLM si
+     *                           la ruta no existe o está fuera del sandbox.
      */
-    private String validarRuta(String rutaAbsoluta) {
-        if (rutaAbsoluta == null || rutaAbsoluta.isBlank())
-            return "Error: la ruta no puede estar vacía.";
+    Path resolverEnSandbox(String ruta) {
+        if (ruta == null || ruta.isBlank())
+            throw new SecurityException("Error: la ruta no puede estar vacía.");
 
         try {
-            Path candidata = Paths.get(rutaAbsoluta).normalize().toAbsolutePath();
-
-            boolean permitida = DIRECTORIOS_PERMITIDOS.stream()
-                    .map(base -> Paths.get(base).normalize().toAbsolutePath())
-                    .anyMatch(base -> candidata.startsWith(base));
-
-            if (!permitida) {
-                Log.warnf("Acceso denegado a ruta fuera de zona permitida: %s", rutaAbsoluta);
-                return "Acceso denegado: la ruta está fuera de los directorios permitidos.";
+            Path candidata = raizSandbox.resolve(ruta).normalize();
+            // toRealPath sigue los enlaces simbólicos: la comprobación se hace
+            // sobre el destino real, no sobre el nombre.
+            Path real = candidata.toRealPath();
+            if (!real.startsWith(raizSandbox)) {
+                Log.warnf("Acceso denegado a ruta fuera del sandbox: %s", ruta);
+                throw new SecurityException("Acceso denegado: la ruta está fuera del directorio permitido.");
             }
-
-            return null;
-
-        } catch (Exception e) {
-            return "Error al resolver la ruta: " + e.getMessage();
+            return real;
+        } catch (IOException | java.nio.file.InvalidPathException e) {
+            throw new SecurityException("Error: la ruta no existe dentro del directorio permitido.");
         }
     }
 
-    // ROB1: UncheckedIOException preserva el tipo de error sin forzar checked
-    // exceptions
-    private String capturarFlujo(java.io.InputStream flujo) {
-        try (BufferedReader lector = new BufferedReader(new InputStreamReader(flujo, StandardCharsets.UTF_8))) {
-            return lector.lines().collect(Collectors.joining("\n"));
+    private static String describirEntrada(Path p) {
+        try {
+            boolean esDir = Files.isDirectory(p);
+            long tamanio = esDir ? 0L : Files.size(p);
+            return String.format("%s - %s (%.2f KB)",
+                    esDir ? "[DIR]" : "[FICHERO]",
+                    p.getFileName(),
+                    tamanio / 1024.0);
         } catch (IOException e) {
-            throw new java.io.UncheckedIOException("Error al leer el flujo de salida del proceso", e);
+            return p.getFileName() + " - [Error al leer atributos]";
         }
     }
 }

@@ -9,6 +9,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import org.jboss.resteasy.reactive.RestForm;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,6 +35,21 @@ public class DocumentResource {
 
     @Inject
     DocumentIngestionService ingestionService;
+
+    /** Token del usuario autenticado; de él sale la empresa (tenant). */
+    @Inject
+    JsonWebToken jwt;
+
+    /** Empresa del usuario autenticado, tomada del claim company_id del JWT. */
+    private String empresaActual() {
+        String idEmpresa = jwt.getClaim("company_id");
+        if (idEmpresa == null || idEmpresa.isBlank()) {
+            throw new WebApplicationException(Response.status(Response.Status.FORBIDDEN)
+                    .entity(new ErrorResponse("El token no contiene empresa asociada"))
+                    .build());
+        }
+        return idEmpresa;
+    }
 
     // Tipos de archivo permitidos
     private static final Set<String> TIPOS_PERMITIDOS = Set.of(
@@ -92,7 +108,8 @@ public class DocumentResource {
                     ficheroCargado.filePath(),
                     ficheroCargado.fileName(),
                     metadatos,
-                    enriquecer);
+                    enriquecer,
+                    empresaActual());
 
             Log.infof("Proceso de ingestión finalizado con éxito. Recurso ID: %s", resultado.id());
 
@@ -101,6 +118,8 @@ public class DocumentResource {
                     .entity(resultado)
                     .build();
 
+        } catch (WebApplicationException e) {
+            throw e;
         } catch (IOException e) {
             Log.errorf(e, "Fallo en la lectura del flujo de datos: %s", ficheroCargado.fileName());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
@@ -122,8 +141,10 @@ public class DocumentResource {
     @GET
     public Response listarDocumentos() {
         try {
-            List<DocumentoDTO> catalogo = ingestionService.listarDocumentos();
+            List<DocumentoDTO> catalogo = ingestionService.listarDocumentos(empresaActual());
             return Response.ok(catalogo).build();
+        } catch (WebApplicationException e) {
+            throw e;
         } catch (Exception e) {
             Log.errorf(e, "Fallo en la recuperación del catálogo");
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
@@ -143,13 +164,16 @@ public class DocumentResource {
     @Path("/{id}")
     public Response obtenerDocumento(@PathParam("id") String id) {
         try {
-            DocumentoDTO recurso = ingestionService.obtenerDocumento(id).orElse(null);
+            // Un documento de otra empresa se trata igual que uno inexistente (404)
+            DocumentoDTO recurso = ingestionService.obtenerDocumento(id, empresaActual()).orElse(null);
             if (recurso == null) {
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(new ErrorResponse("Recurso no localizado en la base de conocimiento"))
                         .build();
             }
             return Response.ok(recurso).build();
+        } catch (WebApplicationException e) {
+            throw e;
         } catch (Exception e) {
             Log.errorf(e, "Fallo en la consulta del recurso con ID: %s", id);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
@@ -169,7 +193,7 @@ public class DocumentResource {
     @Path("/{id}")
     public Response eliminarDocumento(@PathParam("id") String id) {
         try {
-            boolean resultadoPurga = ingestionService.eliminarDocumento(id);
+            boolean resultadoPurga = ingestionService.eliminarDocumento(id, empresaActual());
             if (!resultadoPurga) {
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(new ErrorResponse("No se pudo purgar: recurso no localizado"))
@@ -177,6 +201,8 @@ public class DocumentResource {
             }
             Log.infof("🗑️ Purga confirmada para el recurso: %s", id);
             return Response.noContent().build();
+        } catch (WebApplicationException e) {
+            throw e;
         } catch (Exception e) {
             Log.errorf(e, "Fallo durante la operación de purga del recurso: %s", id);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)

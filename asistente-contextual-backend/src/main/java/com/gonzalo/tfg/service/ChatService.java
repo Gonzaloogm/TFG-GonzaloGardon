@@ -37,15 +37,16 @@ public class ChatService {
      * @return {@code true} si existía y fue eliminada; {@code false} si no existía.
      */
     @Transactional
-    public boolean eliminarSesion(String sessionId) {
+    public boolean eliminarSesion(String sessionId, String usuario) {
 
-        // 1. Borrar la fila de chat_sessions (incluye el JSON de mensajes)
-        boolean eliminado = ChatSessionEntity.deleteById(sessionId);
-
-        if (!eliminado) {
-            Log.warnf("Solicitud de borrado ignorada: sesión '%s' no encontrada en BD.", sessionId);
+        // 1. Borrar la fila de chat_sessions (incluye el JSON de mensajes),
+        //    solo si pertenece al usuario que lo pide
+        ChatSessionEntity sesion = buscarDeUsuario(sessionId, usuario);
+        if (sesion == null) {
+            Log.warnf("Solicitud de borrado ignorada: sesión '%s' no encontrada para el usuario.", sessionId);
             return false;
         }
+        sesion.delete();
 
         Log.infof("Sesión de chat '%s' eliminada de la base de datos.", sessionId);
 
@@ -74,5 +75,31 @@ public class ChatService {
         }
 
         return true;
+    }
+
+    /**
+     * Devuelve la sesión solo si pertenece al usuario indicado.
+     * Una sesión de otro usuario se trata igual que una inexistente.
+     */
+    @Transactional
+    public ChatSessionEntity buscarDeUsuario(String sessionId, String usuario) {
+        if (sessionId == null || usuario == null) {
+            return null;
+        }
+        ChatSessionEntity sesion = ChatSessionEntity.findById(sessionId);
+        return (sesion != null && usuario.equals(sesion.userId)) ? sesion : null;
+    }
+
+    /**
+     * Indica si un usuario puede usar una sesión: es suya o todavía no existe
+     * (en ese caso se creará a su nombre con el primer mensaje).
+     */
+    @Transactional
+    public boolean puedeUsarSesion(String sessionId, String usuario) {
+        if (sessionId == null || usuario == null) {
+            return false;
+        }
+        ChatSessionEntity sesion = ChatSessionEntity.findById(sessionId);
+        return sesion == null || usuario.equals(sesion.userId);
     }
 }

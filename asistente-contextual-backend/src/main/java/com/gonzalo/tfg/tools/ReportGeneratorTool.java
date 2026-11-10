@@ -1,6 +1,7 @@
 package com.gonzalo.tfg.tools;
 
 import com.gonzalo.tfg.model.DocumentoDTO;
+import com.gonzalo.tfg.security.TenantContext;
 import com.gonzalo.tfg.service.DocumentIngestionService;
 import dev.langchain4j.agent.tool.Tool;
 import io.quarkus.logging.Log;
@@ -46,7 +47,7 @@ public class ReportGeneratorTool {
         }
 
         try {
-            Path dirInformes = Paths.get(DIRECTORIO_INFORMES);
+            Path dirInformes = directorioInformesEmpresa();
             if (!Files.exists(dirInformes)) {
                 Files.createDirectories(dirInformes);
             }
@@ -135,7 +136,7 @@ public class ReportGeneratorTool {
         String contenido = md.toString();
 
         try {
-            Path dirInformes = Paths.get(DIRECTORIO_INFORMES);
+            Path dirInformes = directorioInformesEmpresa();
             if (!Files.exists(dirInformes))
                 Files.createDirectories(dirInformes);
 
@@ -152,7 +153,7 @@ public class ReportGeneratorTool {
     public String listarInformesGenerados() {
         Log.info("El motor de IA solicita el listado de informes generados.");
 
-        Path dirInformes = Paths.get(DIRECTORIO_INFORMES);
+        Path dirInformes = directorioInformesEmpresa();
 
         if (!Files.exists(dirInformes)) {
             return "Aún no se ha generado ningún informe. El directorio '" + DIRECTORIO_INFORMES + "' no existe.";
@@ -217,5 +218,17 @@ public class ReportGeneratorTool {
                 "_Este informe fue generado automáticamente por el Asistente Contextual. " +
                 "La información proviene de la base de conocimiento interna y/o búsquedas web. " +
                 "Verifique los datos críticos con las fuentes originales._\n";
+    }
+
+    /**
+     * Cada empresa tiene su propia carpeta de informes (informes/<empresa>),
+     * para que los informes de una no aparezcan al listar los de otra.
+     */
+    private static Path directorioInformesEmpresa() {
+        String idEmpresa = TenantContext.get();
+        if (idEmpresa == null || !idEmpresa.matches("[A-Za-z0-9_-]+")) {
+            throw new IllegalStateException("Empresa no válida para generar o listar informes.");
+        }
+        return Paths.get(DIRECTORIO_INFORMES, idEmpresa);
     }
 }
