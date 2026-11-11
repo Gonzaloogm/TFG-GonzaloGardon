@@ -14,10 +14,10 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
-        <quarkus.platform.version>3.17.0</quarkus.platform.version>
+        <quarkus.platform.version>3.33.4</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.0</surefire-plugin.version>
-        <langchain4j.version>1.0.2</langchain4j.version>
+        <langchain4j.version>1.14.2</langchain4j.version>
     </properties>
 
     <dependencyManagement>
@@ -120,15 +120,6 @@
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-embeddings-bge-small-en-q</artifactId>
-            <version>0.36.2</version>
-        </dependency>
-
-        <!-- Modelo de streaming de Gemini: la extensión quarkus-langchain4j-ai-gemini 1.0.2
-             no incluye StreamingChatModel. Esta versión es la compatible con langchain4j-core 1.0.0. -->
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-google-ai-gemini</artifactId>
-            <version>1.0.0-beta5</version>
         </dependency>
 
         <dependency>

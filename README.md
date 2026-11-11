@@ -1,8 +1,8 @@
 # Asistente Contextual Corporativo
 
-![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)
-![Quarkus](https://img.shields.io/badge/Quarkus-3.17-4695EB?logo=quarkus)
-![LangChain4j](https://img.shields.io/badge/LangChain4j-1.0-green)
+![Java](https://img.shields.io/badge/Java-21%2B-orange?logo=openjdk)
+![Quarkus](https://img.shields.io/badge/Quarkus-3.33-4695EB?logo=quarkus)
+![LangChain4j](https://img.shields.io/badge/LangChain4j-1.20-green)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-336791?logo=postgresql)
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker)
 
@@ -69,7 +69,7 @@ Abre **http://localhost:8080** e inicia sesión con el usuario `admin` y la cont
 
 ### Opción B: modo desarrollo
 
-Necesitas **JDK 21** (Quarkus 3.17 no funciona con Java 25) y Docker para la base de datos.
+Necesitas **JDK 21 o superior** y Docker para la base de datos.
 
 ```bash
 cd asistente-contextual-backend
@@ -120,7 +120,7 @@ cd asistente-contextual-backend
 ./mvnw test
 ```
 
-Hay tests unitarios del filtro de `<thinking>` en streaming y del confinamiento al sandbox. El test de integración necesita PostgreSQL en marcha.
+Hay tests unitarios del filtro de `<thinking>` en streaming, de la clasificación de consultas y del confinamiento al sandbox. El test de integración necesita PostgreSQL en marcha.
 
 ## Limitaciones conocidas
 
@@ -144,7 +144,7 @@ Son las líneas de trabajo pendientes:
 
 ## Stack
 
-Java 21 · Quarkus 3.17 (REST, WebSockets Next, Hibernate ORM con Panache, SmallRye JWT) · LangChain4j / Quarkus LangChain4j · Google Gemini · PostgreSQL 16 + pgvector · ONNX Runtime · Apache Tika · Vanilla JS + marked + DOMPurify · Docker
+Java 21+ · Quarkus 3.33 (REST, WebSockets Next, Hibernate ORM con Panache, SmallRye JWT) · LangChain4j / Quarkus LangChain4j · Google Gemini · PostgreSQL 16 + pgvector · ONNX Runtime · Apache Tika · Vanilla JS + marked + DOMPurify · Docker
 
 ---
 
