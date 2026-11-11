@@ -1,6 +1,7 @@
 package com.gonzalo.tfg.config;
 
 import dev.langchain4j.rag.query.Query;
+import io.quarkiverse.langchain4j.ModelName;
 import dev.langchain4j.rag.query.transformer.QueryTransformer;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -18,7 +19,9 @@ public class CustomQueryTransformer implements QueryTransformer {
 
     private static final Logger Log = Logger.getLogger(CustomQueryTransformer.class);
 
+    /** Modelo ligero configurado como "auxiliar" (ver application.properties). */
     @Inject
+    @ModelName("auxiliar")
     dev.langchain4j.model.chat.ChatModel chatModel;
 
     @Inject
