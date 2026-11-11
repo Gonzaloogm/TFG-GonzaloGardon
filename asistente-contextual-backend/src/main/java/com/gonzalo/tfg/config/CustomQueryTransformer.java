@@ -37,6 +37,13 @@ public class CustomQueryTransformer implements QueryTransformer {
     public Collection<Query> transform(Query query) {
         String originalText = query.text();
 
+        // Saludos y preguntas por el catálogo no buscan en documentos (el enrutador
+        // las descarta): generar variantes sería una llamada al LLM desperdiciada.
+        if (ClasificadorConsulta.noNecesitaBusqueda(originalText)) {
+            Log.debug("CustomQueryTransformer: consulta sin búsqueda documental, no se transforma.");
+            return List.of(query);
+        }
+
         // 1. Verificación en caché (Opcional pero recomendado)
         List<String> enCache = cache.get(originalText);
         if (enCache != null) {

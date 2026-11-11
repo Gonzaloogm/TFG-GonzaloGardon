@@ -3,7 +3,6 @@ package com.gonzalo.tfg.resource;
 import com.gonzalo.tfg.entity.UserEntity;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.logging.Log;
-import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.Consumes;
@@ -33,31 +32,6 @@ public class UserAdminResource {
 
     @ConfigProperty(name = "app.admin.key")
     String adminKey;
-
-    @ConfigProperty(name = "app.bootstrap.admin.password")
-    String bootstrapPassword;
-
-    /**
-     * Bootstrap inicial. Si la tabla está vacía, crea un usuario admin
-     * para no quedarse sin acceso al sistema.
-     */
-    @PostConstruct
-    void init() {
-        crearAdminSiNecesario();
-    }
-
-    @Transactional
-    void crearAdminSiNecesario() {
-        if (UserEntity.count() == 0) {
-            UserEntity admin = new UserEntity();
-            admin.nombreUsuario = "admin";
-            admin.hashContrasena = BcryptUtil.bcryptHash(bootstrapPassword);
-            admin.idEmpresa = "empresa-alpha";
-            admin.activo = true;
-            admin.persist();
-            Log.warn("Bootstrap: Creado usuario administrador ('admin'). Cambia la contraseña en producción.");
-        }
-    }
 
     /**
      * Valida el header X-Admin-Key contra el valor de properties

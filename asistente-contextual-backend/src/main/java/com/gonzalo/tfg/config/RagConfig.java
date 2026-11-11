@@ -28,7 +28,6 @@ import com.gonzalo.tfg.service.DocumentIngestionService;
 import com.gonzalo.tfg.service.PostgresKeywordRetriever;
 import com.gonzalo.tfg.model.DocumentoDTO;
 
-import java.text.Normalizer;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -79,11 +78,6 @@ public class RagConfig {
         TODAS_STOPWORDS.addAll(STOPWORDS_RAG);
     }
 
-    /** Palabras clave para detectar si el usuario pregunta por el catálogo. */
-    private static final Set<String> PALABRAS_CATALOGO = Set.of(
-            "lista", "documentos", "tienes", "inventario",
-            "ficheros", "catalogo", "catálogo", "archivos");
-
     // -------------------------------------------------------------------------
     // PRODUCTOR DEL RETRIEVAL AUGMENTOR
     // -------------------------------------------------------------------------
@@ -115,18 +109,13 @@ public class RagConfig {
             }
             Filter filtroTenant = MetadataFilterBuilder.metadataKey("company_id").isEqualTo(idEmpresa);
             // Si es un saludo corto, no busca en documentos para ahorrar tiempo
-            boolean esSaludo = input.split("\\s+").length <= 3 &&
-                    input.matches(
-                            ".*(hola|buenos|buenas|gracias|adios|hasta luego|hey|ey|que tal|como estas|estas ahi|ahi estas).*");
-            if (esSaludo) {
+            if (ClasificadorConsulta.esSaludo(inputOriginal)) {
                 Log.debug("Enrutador: Detectado saludo/cortesía. Sin recuperación vectorial.");
                 return Collections.emptyList();
             }
 
             // Si preguntan por los archivos disponibles, no hace búsqueda vectorial
-            boolean esCatalogo = Arrays.stream(input.split("\\s+"))
-                    .anyMatch(PALABRAS_CATALOGO::contains);
-            if (esCatalogo) {
+            if (ClasificadorConsulta.esConsultaCatalogo(inputOriginal)) {
                 Log.debug("Enrutador: Detectada consulta de catálogo. Delegando en Tool.");
                 return Collections.emptyList();
             }
@@ -331,10 +320,7 @@ public class RagConfig {
      * @return Texto sin acentos y en minúsculas.
      */
     private static String normalizarTexto(String texto) {
-        if (texto == null)
-            return "";
-        String nfd = Normalizer.normalize(texto.toLowerCase(), Normalizer.Form.NFD);
-        return nfd.replaceAll("\\p{InCombiningDiacriticalMarks}", "");
+        return ClasificadorConsulta.normalizar(texto);
     }
 
     /**
