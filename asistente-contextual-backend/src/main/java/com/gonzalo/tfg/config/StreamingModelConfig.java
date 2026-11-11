@@ -12,8 +12,9 @@ import java.time.Duration;
  * Produce el modelo de chat en streaming de Gemini.
  *
  * La extensión quarkus-langchain4j-ai-gemini 1.0.2 solo ofrece el modelo
- * síncrono, así que el de streaming se construye a mano reutilizando la misma
- * configuración (clave, modelo, temperatura...) para que ambos se comporten igual.
+ * síncrono, así que el de streaming se construye a mano con la misma clave y
+ * parámetros de generación. El modelo es distinto: el de streaming es el principal
+ * (app.gemini.modelo-chat) y el síncrono, uno ligero para tareas auxiliares.
  */
 @ApplicationScoped
 public class StreamingModelConfig {
@@ -21,7 +22,7 @@ public class StreamingModelConfig {
     @ConfigProperty(name = "quarkus.langchain4j.ai.gemini.api-key")
     String apiKey;
 
-    @ConfigProperty(name = "quarkus.langchain4j.ai.gemini.chat-model.model-id")
+    @ConfigProperty(name = "app.gemini.modelo-chat")
     String modelo;
 
     @ConfigProperty(name = "quarkus.langchain4j.ai.gemini.chat-model.temperature", defaultValue = "0.7")

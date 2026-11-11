@@ -198,6 +198,14 @@ public class ChatWebSocket {
             Log.warnf("Rate limit alcanzado para sesión %s: %s", contexto, msg);
             return "Límite de velocidad de la API alcanzado. Espera unos segundos antes de continuar.";
         }
+        // Fallos puntuales del proveedor: servicio saturado o respuesta mal formada
+        // (Gemini devuelve a veces finishReason=MALFORMED_RESPONSE). No se reintenta
+        // aquí porque la pregunta ya está en la memoria y quedaría duplicada.
+        if (msg.contains("503") || msg.contains("UNAVAILABLE") || msg.contains("high demand")
+                || msg.contains("MALFORMED")) {
+            Log.warnf("Fallo transitorio del modelo en sesión %s: %s", contexto, msg);
+            return "El modelo de IA no ha respondido correctamente (puede estar saturado). Vuelve a enviar la pregunta.";
+        }
         Log.errorf(e, "Error procesando mensaje de sesión %s", contexto);
         return "Error al procesar tu consulta. Por favor, inténtalo de nuevo.";
     }

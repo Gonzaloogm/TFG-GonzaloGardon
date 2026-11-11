@@ -32,7 +32,8 @@ services:
         condition: service_healthy
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:?Falta GEMINI_API_KEY en .env}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      GEMINI_AUX_MODEL: ${GEMINI_AUX_MODEL:-gemini-3.5-flash-lite}
       # En modo producción no hay valores por defecto: la aplicación no arranca sin ellas
       ADMIN_KEY: ${ADMIN_KEY:?Falta ADMIN_KEY en .env}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Falta BOOTSTRAP_ADMIN_PASSWORD en .env}

@@ -18,7 +18,7 @@ Es mi Trabajo de Fin de Grado en Ingeniería Informática (Universidad Pontifici
 
 - **Chat en streaming por WebSocket.** La respuesta aparece a medida que el modelo la genera. Un filtro con estado elimina los bloques de razonamiento interno (`<thinking>`), aunque lleguen partidos entre fragmentos.
 - **Búsqueda híbrida.** Combina búsqueda semántica (pgvector) y búsqueda por palabras clave (full-text de PostgreSQL en español). Los resultados se fusionan con *Reciprocal Rank Fusion* y se reordenan por similitud con la pregunta.
-- **Transformación de consultas.** Antes de buscar, la pregunta se reformula en varias variantes y en una respuesta hipotética (HyDE). Estas transformaciones se guardan en caché.
+- **Transformación de consultas.** Antes de buscar, la pregunta se reformula en varias variantes y en una respuesta hipotética (HyDE). Esto lo hace un modelo ligero aparte, para no retrasar la respuesta; los saludos y las preguntas por el catálogo se saltan este paso, y las transformaciones se guardan en caché.
 - **Embeddings locales.** Los documentos se vectorizan dentro del propio proceso con un modelo ONNX (`bge-small-en-q`, 384 dimensiones). El texto de los documentos no se envía a ningún servicio externo para vectorizarlo; solo los fragmentos recuperados llegan al LLM.
 - **Herramientas (function calling).** El modelo puede consultar el catálogo de documentos, buscar dentro de un documento concreto, obtener estadísticas de la base de conocimiento, generar informes en Markdown, leer ficheros de un directorio aislado y consultar la web o los tipos de cambio.
 - **Multiempresa y multiusuario.** Cada usuario pertenece a una empresa (claim `company_id` del JWT). Documentos, búsquedas, estadísticas e informes quedan aislados por empresa, y cada usuario solo ve sus propias conversaciones.
@@ -97,7 +97,8 @@ Todas las variables se leen de `asistente-contextual-backend/.env` (ignorado por
 | Variable | Obligatoria | Uso |
 |---|---|---|
 | `GEMINI_API_KEY` | Sí | Clave de Google Gemini |
-| `GEMINI_MODEL` | No | Modelo (por defecto `gemini-3.8-flash`) |
+| `GEMINI_MODEL` | No | Modelo principal del chat (por defecto `gemini-3.5-flash`) |
+| `GEMINI_AUX_MODEL` | No | Modelo ligero que reformula las consultas (por defecto `gemini-3.5-flash-lite`) |
 | `ADMIN_KEY` | En producción | Clave de la API de administración de usuarios |
 | `BOOTSTRAP_ADMIN_PASSWORD` | En producción | Contraseña del usuario `admin` inicial |
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | No | Conexión a PostgreSQL |
