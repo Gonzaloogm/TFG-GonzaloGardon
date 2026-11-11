@@ -1,147 +1,150 @@
-# Asistente Contextual Corporativo (TFG)
+# Asistente Contextual Corporativo
 
-![Quarkus](https://img.shields.io/badge/Quarkus-3.17.0-blue?logo=quarkus)
-![Java](https://img.shields.io/badge/Java-21-orange?logo=java)
-![LangChain4j](https://img.shields.io/badge/LangChain4j-1.0.2-green)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-%2B%20pgvector-336791?logo=postgresql)
-![JavaScript](https://img.shields.io/badge/Frontend-Vanilla_JS-f7df1e?logo=javascript)
+![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)
+![Quarkus](https://img.shields.io/badge/Quarkus-3.17-4695EB?logo=quarkus)
+![LangChain4j](https://img.shields.io/badge/LangChain4j-1.0-green)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-336791?logo=postgresql)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker)
 
-Este repositorio contiene el código fuente completo (Backend y Frontend) para el Trabajo de Fin de Grado (TFG) en Ingeniería Informática por la Universidad Pontificia de Salamanca.
+Asistente conversacional que responde preguntas sobre los documentos internos de una empresa mediante **RAG (Retrieval-Augmented Generation)**: sube PDF, DOCX o TXT y pregunta por su contenido en lenguaje natural. Las respuestas llegan en streaming y citan las fuentes consultadas.
 
-El proyecto implementa un **Asistente Contextual Inteligente de grado empresarial** capaz de razonar sobre documentos privados corporativos mediante la arquitectura **RAG (Retrieval-Augmented Generation)**, interactuar con el sistema operativo a través de herramientas nativas e interfaces inspiradas en **MCP (Model Context Protocol)**, y mantener un estado persistente de la información.
+Es mi Trabajo de Fin de Grado en Ingeniería Informática (Universidad Pontificia de Salamanca, calificación **9,4**). La memoria es un estudio de las técnicas de RAG y agentes con LLM, y este repositorio es su implementación. Después de la defensa sigo desarrollándolo: seguridad multiempresa, streaming, despliegue con Docker y, a continuación, tests y evaluación de la calidad del RAG.
 
----
-
-## Caso de Uso y Viabilidad de Mercado
-
-Este proyecto nace como respuesta a un problema crítico en el mercado B2B: la ineficiencia en la gestión del conocimiento interno y la revisión de contratos en empresas *mid-market*. 
-
-Frente a soluciones tradicionales de *Intelligent Document Processing* (IDP) que requieren costosos procesos de entrenamiento (*Fine-Tuning*) o extracción de entidades rígidas (NER), este Asistente Contextual propone un enfoque radicalmente ágil:
-* **Cero tiempos de entrenamiento:** Al usar RAG, un documento (ej. un contrato de proveedores o un manual de normativas) es consultable en el mismo segundo en que se sube al sistema.
-* **Privacidad garantizada:** La vectorización de documentos críticos se realiza localmente (*In-Process*) mediante modelos ONNX, asegurando que la información sensible nunca abandone la infraestructura de la empresa.
-* **Explicabilidad (XAI):** Para combatir las alucinaciones inherentes a los LLMs, el sistema inyecta metadatos dinámicos, forzando a la IA a proporcionar referencias cruzadas y citar visualmente sus "Fuentes consultadas".
+<!-- TODO: GIF de demostración (subir documento → pregunta → respuesta en streaming con fuentes) -->
 
 ---
 
-## Arquitectura y Stack Tecnológico
+## Qué hace
 
-El sistema ha sido diseñado bajo un enfoque reactivo, *local-first* para embeddings y orientado a la eficiencia transaccional:
+- **Chat en streaming por WebSocket.** La respuesta aparece a medida que el modelo la genera. Un filtro con estado elimina los bloques de razonamiento interno (`<thinking>`), aunque lleguen partidos entre fragmentos.
+- **Búsqueda híbrida.** Combina búsqueda semántica (pgvector) y búsqueda por palabras clave (full-text de PostgreSQL en español). Los resultados se fusionan con *Reciprocal Rank Fusion* y se reordenan por similitud con la pregunta.
+- **Transformación de consultas.** Antes de buscar, la pregunta se reformula en varias variantes y en una respuesta hipotética (HyDE). Estas transformaciones se guardan en caché.
+- **Embeddings locales.** Los documentos se vectorizan dentro del propio proceso con un modelo ONNX (`bge-small-en-q`, 384 dimensiones). El texto de los documentos no se envía a ningún servicio externo para vectorizarlo; solo los fragmentos recuperados llegan al LLM.
+- **Herramientas (function calling).** El modelo puede consultar el catálogo de documentos, buscar dentro de un documento concreto, obtener estadísticas de la base de conocimiento, generar informes en Markdown, leer ficheros de un directorio aislado y consultar la web o los tipos de cambio.
+- **Multiempresa y multiusuario.** Cada usuario pertenece a una empresa (claim `company_id` del JWT). Documentos, búsquedas, estadísticas e informes quedan aislados por empresa, y cada usuario solo ve sus propias conversaciones.
+- **Memoria conversacional persistente** en PostgreSQL, con una ventana de 10 mensajes por sesión.
 
-* **Backend:** [Quarkus](https://quarkus.io/) ("Supersonic Subatomic Java") para un arranque ultra-rápido y bajo consumo de memoria.
-* **Orquestador de IA:** [LangChain4j](https://github.com/langchain4j/langchain4j) integrado de forma nativa con el ecosistema CDI de Quarkus.
-* **Modelos de Inteligencia Artificial:** * *Razonamiento (LLM):* Google Gemini (`gemini-2.0-flash`) vía API.
-  * *Embeddings:* Modelo local cuantizado `bge-small-en-q` (ONNX, Dimensión: 384) para garantizar la privacidad en la generación de vectores topológicos.
-* **Base de Datos Vectorial:** PostgreSQL con la extensión `pgvector` para el almacenamiento de embeddings y búsqueda de similitud semántica.
-* **Capa de Presentación (Frontend):** *Single Page Application* (SPA) con Vanilla JS, servida estáticamente desde Quarkus. Diseño inspirado en IDEs modernos con soporte para renderizado Markdown (`marked.js`).
-* **Comunicación:** WebSockets (Quarkus WebSockets Next) para interacciones reactivas bidireccionales en tiempo real.
+## Arquitectura
 
----
+```mermaid
+flowchart LR
+    UI["Navegador<br/>(SPA en Vanilla JS)"] -- "WebSocket + JWT" --> WS[ChatWebSocket]
+    UI -- REST --> API["REST API<br/>documentos, chats, auth"]
+    WS --> AI["AsistenteService<br/>(LangChain4j AI Service)"]
+    AI -- streaming --> LLM[(Google Gemini)]
+    AI --> TOOLS[Herramientas @Tool]
+    AI --> RAG["Pipeline RAG<br/>multi-query + HyDE → híbrido → RRF → re-ranking"]
+    RAG --> PG[("PostgreSQL<br/>pgvector + full-text")]
+    API --> ING["Ingesta<br/>Tika → fragmentos → ONNX"]
+    ING --> PG
+```
 
-## Características Técnicas Destacadas
+La empresa del usuario no viaja en un `ThreadLocal`, porque se perdería en los hilos de streaming. Va dentro del identificador de memoria de LangChain4j (`ContextoSesion`), así que el enrutador de consultas y las herramientas la reciben de forma explícita en cualquier hilo.
 
-1. **RAG Avanzado con Filtrado Estricto:** El *pipeline* de ingestión calibra el motor de recuperación con parámetros matemáticos precisos (`maxResults = 5`, `minScore = 0.70`) para eliminar el ruido semántico antes de inyectar el contexto al LLM.
-2. **Razonamiento "Chain of Thought" Invisible:** Se obliga a la red neuronal a estructurar su razonamiento paso a paso utilizando etiquetas `<thinking>`. El backend intercepta el flujo mediante expresiones regulares (Regex) y depura estos pensamientos internos, mostrando al usuario únicamente la respuesta final limpia y directa.
-3. **Agencia y Herramientas (Tools):** Más allá de un chat pasivo, el LLM posee "agencia". Utilizando la anotación `@Tool`, puede interrumpir su generación de texto para ejecutar métodos Java nativos (ej. inspeccionar el disco duro, listar el catálogo real de documentos en RAM) operando bajo estrictas barreras de seguridad.
-4. **Persistencia de Estado Total ("Triple Borrado"):** Implementación de sincronización bidireccional entre la memoria RAM, un catálogo persistente en disco (`documents_catalog.json` gestionado vía Jackson `ObjectMapper`) y la base de datos PostgreSQL. Esto asegura consistencia frente a reinicios del servidor.
-5. **Aislamiento de Sesiones Reactivas:** La segregación de sesiones se gestiona extrayendo el identificador de red del socket (`connection.id()`), inyectándolo en la memoria conversacional de LangChain4j para evitar la exfiltración de contextos entre usuarios concurrentes.
+## Puesta en marcha
 
----
+### Opción A: Docker Compose (recomendada)
 
-## Guía de Instalación
+Solo necesitas Docker y una API key de [Google AI Studio](https://aistudio.google.com).
 
-Para preparar tu entorno local y descargar el proyecto, sigue estos pasos:
-
-### 1. Requisitos Previos
-Asegúrate de tener instalado en tu sistema:
-* **Java 21** o superior (JDK).
-* **Docker y Docker Compose** (necesario para levantar PostgreSQL + pgvector).
-* Una **API Key de Google Gemini** válida.
-
-### 2. Clonar el repositorio
-Descarga el código fuente en tu máquina local:
 ```bash
 git clone https://github.com/Gonzaloogm/TFG-GonzaloGardon.git
 cd TFG-GonzaloGardon/asistente-contextual-backend
-```
-
-### 3. Configurar variables de entorno
-La configuración sensible se lee de un fichero `.env` en la carpeta `asistente-contextual-backend/`, que Quarkus carga automáticamente al arrancar y que está ignorado por git. Créalo a partir de la plantilla y escribe tu clave de Gemini:
-
-```bash
 cp .env.example .env
 ```
 
+Rellena en `.env` estas tres variables:
+
 ```dotenv
-GEMINI_API_KEY=tu_clave_api_aqui
+GEMINI_API_KEY=tu_clave
+ADMIN_KEY=una_clave_larga_para_la_api_de_administracion
+BOOTSTRAP_ADMIN_PASSWORD=contraseña_del_usuario_admin
 ```
 
-*(También puedes exportar las variables en la terminal; si existen en ambos sitios, prevalece la variable de entorno.)*
-
-En modo desarrollo no hace falta nada más. Para ejecutar en modo producción (`java -jar`) son **obligatorias** además estas variables; si faltan, la aplicación no arranca:
-
-| Variable | Uso |
-|---|---|
-| `ADMIN_KEY` | Clave de la API de administración de usuarios (cabecera `X-Admin-Key`) |
-| `BOOTSTRAP_ADMIN_PASSWORD` | Contraseña del usuario `admin` que se crea si la tabla de usuarios está vacía |
-| `DB_URL`, `DB_USER`, `DB_PASSWORD` | Opcionales: conexión a PostgreSQL (por defecto, la base local del paso 5) |
-| `JWT_PRIVATE_KEY_LOCATION`, `JWT_PUBLIC_KEY_LOCATION` | Opcionales: rutas de las claves JWT (por defecto, `keys/`) |
-
-### 4. Generar las claves JWT
-El backend firma los tokens de sesión con un par de claves RSA que **no** se incluye en el repositorio. Genéralas una vez (se crean en `keys/`, carpeta ignorada por git):
 ```bash
-./scripts/generar-claves-jwt.sh
+docker compose up --build
 ```
-*(Nunca coloques la clave privada en `src/main/resources/META-INF/resources`: Quarkus sirve esa carpeta como web pública.)*
 
-### 5. Levantar la Base de Datos
-Inicia el contenedor de PostgreSQL con la extensión pgvector configurada en el proyecto:
+Abre **http://localhost:8080** e inicia sesión con el usuario `admin` y la contraseña de `BOOTSTRAP_ADMIN_PASSWORD`. La imagen se compila desde el código fuente, así que no hace falta tener Java instalado. Las claves JWT se generan solas la primera vez y se guardan en un volumen, igual que la base de datos.
+
+### Opción B: modo desarrollo
+
+Necesitas **JDK 21** (Quarkus 3.17 no funciona con Java 25) y Docker para la base de datos.
+
 ```bash
-docker run -d \
-  --name pgvector-postgres \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
+cd asistente-contextual-backend
+cp .env.example .env              # basta con GEMINI_API_KEY
+./scripts/generar-claves-jwt.sh   # crea keys/ (ignorada por git)
+
+docker run -d --name pgvector-postgres \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=asistente_contextual \
-  -p 5432:5432 \
-  pgvector/pgvector:pg16
-```
-*(Nota: las credenciales y el nombre de la base de datos coinciden con los valores por defecto de `application.properties`.)*
+  -p 5432:5432 pgvector/pgvector:pg16
 
----
-
-## Guía de Ejecución
-
-Una vez instalado, tienes dos formas principales de ejecutar el proyecto dependiendo de tu necesidad:
-
-### Opción A: Ejecución en Modo Desarrollo (Live Coding)
-Ideal para programar y hacer pruebas. Quarkus recargará los cambios en el código en tiempo real sin necesidad de reiniciar el servidor.
-
-**En Linux / macOS:**
-```bash
 ./mvnw quarkus:dev
 ```
 
-**En Windows:**
-```cmd
-mvnw.cmd quarkus:dev
-```
+En modo desarrollo, la clave de administración y la contraseña de `admin` tienen valores locales por defecto (ver `application.properties`). En producción no los tienen: si faltan, la aplicación no arranca.
 
-### Opción B: Ejecución en Modo Producción (Compilado)
-Si deseas desplegar la aplicación o probar su rendimiento real empaquetada como un archivo `.jar` ejecutable:
+### Usuarios
 
-1. **Compilar el proyecto:**
+El usuario `admin` se crea automáticamente en la empresa `empresa-alpha` si la tabla de usuarios está vacía. Para crear más usuarios y empresas se usa la API de administración (cabecera `X-Admin-Key`). Tienes ejemplos con `curl` en [`Comandos_Gestion_Usuarios`](asistente-contextual-backend/Comandos_Gestion_Usuarios).
+
+## Configuración
+
+Todas las variables se leen de `asistente-contextual-backend/.env` (ignorado por git) o del entorno.
+
+| Variable | Obligatoria | Uso |
+|---|---|---|
+| `GEMINI_API_KEY` | Sí | Clave de Google Gemini |
+| `GEMINI_MODEL` | No | Modelo (por defecto `gemini-3.8-flash`) |
+| `ADMIN_KEY` | En producción | Clave de la API de administración de usuarios |
+| `BOOTSTRAP_ADMIN_PASSWORD` | En producción | Contraseña del usuario `admin` inicial |
+| `DB_URL`, `DB_USER`, `DB_PASSWORD` | No | Conexión a PostgreSQL |
+| `JWT_PRIVATE_KEY_LOCATION`, `JWT_PUBLIC_KEY_LOCATION` | No | Rutas de las claves JWT (por defecto, `keys/`) |
+| `APP_PORT` | No | Puerto publicado por Docker Compose (por defecto, 8080) |
+
+## Seguridad
+
+- Autenticación con JWT firmado con RSA. Las claves no están en el repositorio ni en la carpeta web pública.
+- Ningún secreto en el código: sin valores por defecto en producción (*fail-fast*).
+- Aislamiento por empresa en todas las consultas a la base de datos vectorial y en la búsqueda por palabras clave. El `company_id` lo pone siempre el servidor a partir del token, nunca el cliente.
+- Las herramientas no pueden ejecutar comandos de shell. La lectura de ficheros está confinada a un directorio *sandbox*: las rutas se resuelven con `toRealPath()`, de modo que ni `../` ni los enlaces simbólicos permiten salir de él.
+- Comprobación de propietario en todas las operaciones sobre conversaciones, tanto por REST como por WebSocket.
+
+## Tests
+
 ```bash
-./mvnw clean package -DskipTests
-```
-*(En Windows usa `mvnw.cmd clean package -DskipTests`)*
-
-2. **Ejecutar:**
-```bash
-java -jar target/quarkus-app/quarkus-run.jar
+cd asistente-contextual-backend
+./mvnw test
 ```
 
-###  Acceso a la Interfaz Web
-Independientemente del modo de ejecución que elijas, una vez que el servidor haya arrancado, abre tu navegador web y entra en:
+Hay tests unitarios del filtro de `<thinking>` en streaming y del confinamiento al sandbox. El test de integración necesita PostgreSQL en marcha.
 
-**http://localhost:8080**
+## Limitaciones conocidas
 
-Desde ahí podrás acceder al portal corporativo, realizar el *Mock Login* y empezar a interactuar en tiempo real con la base de conocimiento del sistema.
+Son las líneas de trabajo pendientes:
+
+- **Modelo de embeddings en inglés** (`bge-small-en`) aplicado a documentos en español. Un modelo multilingüe debería mejorar la recuperación.
+- **Fragmentación por caracteres** (300 con solapamiento de 30), no por tokens ni por estructura del documento.
+- **No hay evaluación cuantitativa del RAG** todavía (fidelidad, relevancia del contexto). Es el siguiente paso planificado.
+- El **catálogo de documentos** se guarda en un JSON en disco además de en la base de datos, y los dos pueden desincronizarse.
+- El esquema se gestiona con `hibernate-orm.database.generation=update`, sin migraciones versionadas.
+- Pocos tests automáticos y sin integración continua por ahora.
+
+## Hoja de ruta
+
+- [x] Seguridad: secretos fuera del código, sandbox de herramientas, aislamiento por empresa y por usuario
+- [x] Respuestas en streaming
+- [x] Despliegue con Docker Compose
+- [ ] Tests de integración con Testcontainers e integración continua con GitHub Actions
+- [ ] Banco de evaluación del RAG en español (RAGAS)
+- [ ] Embeddings multilingües y fragmentación por tokens
+
+## Stack
+
+Java 21 · Quarkus 3.17 (REST, WebSockets Next, Hibernate ORM con Panache, SmallRye JWT) · LangChain4j / Quarkus LangChain4j · Google Gemini · PostgreSQL 16 + pgvector · ONNX Runtime · Apache Tika · Vanilla JS + marked + DOMPurify · Docker
+
+---
+
+Gonzalo Gardón · Trabajo de Fin de Grado, Ingeniería Informática, Universidad Pontificia de Salamanca

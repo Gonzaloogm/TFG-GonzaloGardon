@@ -1,0 +1,8 @@
+# Contexto de build del Dockerfile de la raíz (docker compose).
+# Nunca entran en la imagen: secretos, claves ni datos locales de ejecución.
+*
+!pom.xml
+!src/
+!scripts/generar-claves-jwt.sh
+!scripts/docker-entrypoint.sh
+src/main/resources/META-INF/resources/*.pem
